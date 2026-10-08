@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blume Arts | Admin Portal</title>
+<link rel="stylesheet" href="css/admin.css?v=3.0">
+</head>
+<body>
+
+<!-- PIN LOGIN -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card">
+    <div class="logo-mark-svg" style="display:inline-flex; align-items:center; justify-content:center; width:54px; height:54px; border-radius:50%; background:var(--blush); color:var(--rose-deep); margin-bottom:12px;">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+      </svg>
+    </div>
+    <h1>BLUME ARTS</h1>
+    <p class="subtitle">Admin Portal Access</p>
+    <div class="login-error" id="loginError" style="display:none">Incorrect Admin PIN. Please try again.</div>
+    <div class="form-group" style="margin-bottom:18px; text-align:left;">
+      <label style="font-size:.8rem; font-weight:600; opacity:.85; display:block; margin-bottom:6px;">Enter Admin PIN</label>
+      <div class="pin-input-wrap" style="position:relative;">
+        <input type="password" id="adminPinInput" placeholder="Enter PIN" maxlength="8" style="padding-right:45px; letter-spacing:3px; font-size:1.1rem; font-weight:600;">
+        <button type="button" id="togglePinVisibilityBtn" aria-label="Toggle PIN Visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; padding:6px; cursor:pointer; opacity:.7;">
+          <svg id="eyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <button id="loginPinBtn">Access Admin</button>
+    <p style="font-size:.78rem; opacity:.55; margin-top:16px;">Protected Security System</p>
+  </div>
+</div>
+
+<!-- MOBILE TOP HEADER -->
+<div class="mobile-admin-header" id="mobileHeader">
+  <a href="index.html" class="mobile-home-btn" title="Back to Store Front">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+    <span>Home</span>
+  </a>
+  <div class="brand-title">Blume Arts Admin</div>
+  <button class="logout-btn-sm" id="mobileLogoutBtn" title="Log Out">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+  </button>
+</div>
+
+<!-- ADMIN LAYOUT -->
+<div class="admin-layout" id="adminLayout">
+  <!-- SIDEBAR (DESKTOP) -->
+  <div class="sidebar" id="sidebar">
+    <h2>Blume Arts</h2>
+    <div class="user-info-badge" style="padding: 0 8px 16px 8px; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 16px;">
+      <div style="font-weight: 600; color: #fff;">Administrator</div>
+      <div style="opacity: 0.8; font-size: 0.72rem; color: var(--blush);">PIN Access Enabled</div>
+    </div>
+    <nav class="desktop-nav">
+      <a href="index.html" class="nav-link-item"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span> Home Store</a>
+      <a href="#" class="tab-link active" data-tab="dashboard" id="navDashboard"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></span> Dashboard</a>
+      <a href="#" class="tab-link" data-tab="products" id="navProducts"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></span> Products</a>
+      <a href="#" class="tab-link" data-tab="categories" id="navCategories"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg></span> Categories</a>
+      <a href="#" class="tab-link" data-tab="orders" id="navOrders"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span> Sales</a>
+      <a href="#" class="tab-link" data-tab="settings" id="navSettings"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span> Settings</a>
+      <a href="#" class="tab-link" data-tab="access" id="navAccess"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span> Access Management</a>
+    </nav>
+    <div class="logout" id="logoutBtn">
+      <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></span> Log Out
+    </div>
+  </div>
+
+  <!-- MAIN VIEW -->
+  <div class="main">
+    <!-- DASHBOARD -->
+    <div class="tab-view active" id="tab-dashboard">
+      <h1>Dashboard</h1>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="label">Total Products</div><div class="value" id="statTotalProducts">0</div></div>
+        <div class="stat-card"><div class="label">Active Products</div><div class="value" id="statActiveProducts">0</div></div>
+        <div class="stat-card"><div class="label">Out of Stock</div><div class="value" id="statOutOfStock">0</div></div>
+        <div class="stat-card"><div class="label">Total Orders</div><div class="value" id="statTotalOrders">0</div></div>
+        <div class="stat-card"><div class="label">Pending Orders</div><div class="value" id="statPendingOrders">0</div></div>
+        <div class="stat-card"><div class="label">Completed Orders</div><div class="value" id="statCompletedOrders">0</div></div>
+        <div class="stat-card"><div class="label">Total Sales</div><div class="value" id="statTotalSales">₹0</div></div>
+      </div>
+    </div>
+
+    <!-- PRODUCTS -->
+    <div class="tab-view" id="tab-products">
+      <div class="toolbar">
+        <h1>Products</h1>
+        <button class="btn" id="addProductBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Add Product
+        </button>
+      </div>
+      <div class="card-table"><table>
+        <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Delivery Fee</th><th>Stock</th><th>Visible</th><th>Featured</th><th>Actions</th></tr></thead>
+        <tbody id="productsTbody"></tbody>
+      </table></div>
+    </div>
+
+    <!-- CATEGORIES -->
+    <div class="tab-view" id="tab-categories">
+      <div class="toolbar">
+        <h1>Categories</h1>
+        <button class="btn" id="addCategoryBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Add Category
+        </button>
+      </div>
+      <div class="card-table"><table>
+        <thead><tr><th>Name</th><th>Visible</th><th>Actions</th></tr></thead>
+        <tbody id="categoriesTbody"></tbody>
+      </table></div>
+    </div>
+
+    <!-- ORDERS / SALES -->
+    <div class="tab-view" id="tab-orders">
+      <h1>Sales & Orders</h1>
+      <div class="card-table"><table>
+        <thead><tr><th>Order ID</th><th>Customer</th><th>Phone</th><th>Total</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="ordersTbody"></tbody>
+      </table></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="tab-view" id="tab-settings">
+      <h1>Business & App Settings</h1>
+      
+      <div class="card-table" style="padding:24px; margin-bottom:24px;">
+        <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">General Store Settings</h3>
+        <div class="form-grid">
+          <div class="form-group"><label>Business Name</label><input id="setBusinessName"></div>
+          <div class="form-group"><label>Phone</label><input id="setPhone"></div>
+          <div class="form-group"><label>WhatsApp Number (digits, with country code)</label><input id="setWhatsapp"></div>
+          <div class="form-group"><label>Email</label><input id="setEmail"></div>
+          <div class="form-group"><label>Instagram Username</label><input id="setInstagram"></div>
+          <div class="form-group"><label>Instagram URL</label><input id="setInstagramUrl"></div>
+          <div class="form-group full"><label>Business Address</label><input id="setAddress"></div>
+          <div class="form-group full"><label>Business Description</label><textarea id="setDescription" rows="2"></textarea></div>
+          <div class="form-group full"><label>Delivery Information</label><textarea id="setDeliveryInfo" rows="2"></textarea></div>
+          <div class="form-group full"><label>Footer Text</label><input id="setFooterText"></div>
+        </div>
+        <div class="form-actions"><button class="btn" id="saveSettingsBtn">Save Settings</button></div>
+      </div>
+    </div>
+
+    <!-- ACCESS MANAGEMENT -->
+    <div class="tab-view" id="tab-access">
+      <div class="toolbar">
+        <h1>Access Management</h1>
+      </div>
+
+      <div class="access-cards-grid">
+        <div class="access-card info-card">
+          <h3>Current Admin Access Status</h3>
+          <div class="status-badge-row" style="margin-top:10px; margin-bottom:14px;">
+            <span class="pill yes">PIN Access Enabled</span>
+            <span class="pill primary">Shared PIN Protection</span>
+          </div>
+          <p style="font-size:.85rem; opacity:.85; line-height:1.6;">
+            Admin access is secured using a central Admin PIN. Share this PIN with authorized team members so they can access the Admin Dashboard.
+          </p>
+        </div>
+
+        <div class="access-card form-card">
+          <h3>Change Admin Access PIN</h3>
+          <p style="font-size:.82rem; opacity:.75; margin-bottom:14px;">Update the master PIN for Admin access. The new PIN will take effect immediately.</p>
+
+          <div class="warning-alert" style="display:flex; gap:10px; align-items:flex-start;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0; margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <div><strong>Security Warning:</strong> Changing the Admin PIN will immediately invalidate the previous PIN. Make sure to share the updated PIN with authorized personnel.</div>
+          </div>
+
+          <div class="login-error" id="accessError" style="display:none"></div>
+          <div class="success-msg" id="accessSuccess" style="display:none">Admin PIN updated successfully!</div>
+
+          <div class="form-group" style="margin-bottom:14px; text-align:left;">
+            <label style="font-size:.8rem; font-weight:600;">New Admin PIN (4 to 8 digits)</label>
+            <div style="position:relative;">
+              <input type="password" id="newPinInput" placeholder="Enter new PIN" maxlength="8" style="padding-right:45px; letter-spacing:2px; font-weight:600;">
+              <button type="button" class="toggle-pin-btn" id="toggleNewPinBtn" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; padding:4px; cursor:pointer; opacity:.7;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:18px; text-align:left;">
+            <label style="font-size:.8rem; font-weight:600;">Confirm New PIN</label>
+            <input type="password" id="confirmPinInput" placeholder="Re-enter new PIN" maxlength="8" style="letter-spacing:2px; font-weight:600;">
+          </div>
+
+          <button class="btn" id="updatePinBtn" style="width:100%; padding:12px;">Update Admin PIN</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MOBILE BOTTOM NAVIGATION -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav">
+  <a href="index.html" class="nav-link-item"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span><span>Home</span></a>
+  <a href="#" class="tab-link active" data-tab="dashboard"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></span><span>Dashboard</span></a>
+  <a href="#" class="tab-link" data-tab="products"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></span><span>Products</span></a>
+  <a href="#" class="tab-link" data-tab="categories"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg></span><span>Categories</span></a>
+  <a href="#" class="tab-link" data-tab="orders"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span><span>Sales</span></a>
+  <a href="#" class="tab-link" data-tab="settings"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span><span>Settings</span></a>
+  <a href="#" class="tab-link" data-tab="access"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span>Access</span></a>
+</nav>
+
+<!-- PRODUCT MODAL -->
+<div class="overlay" id="productModalOverlay">
+  <div class="modal">
+    <h3 id="productModalTitle">Add Product</h3>
+    <div class="form-grid">
+      <div class="form-group full"><label>Product Name *</label><input id="fName"></div>
+      <div class="form-group"><label>Price (₹) *</label><input id="fPrice" type="number" min="0"></div>
+      <div class="form-group"><label>Delivery Charge (₹)</label><input id="fDeliveryCharge" type="number" min="0" value="0" placeholder="0"></div>
+      <div class="form-group"><label>Stock Quantity</label><input id="fStock" type="number" value="10"></div>
+      <div class="form-group"><label>Category</label><select id="fCategory"></select></div>
+      <div class="form-group"><label>Colors (comma separated)</label><input id="fColors" placeholder="Red, Pink, White"></div>
+      <div class="form-group full"><label>Description</label><textarea id="fDescription" rows="3"></textarea></div>
+      <div class="form-group full"><label>Product Image</label><input type="file" id="fImageFile" accept="image/*"><img class="img-preview" id="fImagePreview" style="display:none"></div>
+      <div class="form-group"><label>Visible to customers</label><select id="fAvailable"><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div class="form-group"><label>Featured</label><select id="fFeatured"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="form-group full">
+        <label>Custom Fields (e.g. Flower Type, Occasion, Material)</label>
+        <div id="customFieldsWrap"></div>
+        <button class="btn outline sm" id="addCustomFieldBtn" type="button">+ Add Custom Field</button>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn outline" id="cancelProductBtn">Cancel</button>
+      <button class="btn" id="saveProductBtn">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- CATEGORY MODAL -->
+<div class="overlay" id="categoryModalOverlay">
+  <div class="modal" style="max-width:400px">
+    <h3 id="categoryModalTitle">Add Category</h3>
+    <div class="form-group"><label>Category Name *</label><input id="cName"></div>
+    <div class="form-actions">
+      <button class="btn outline" id="cancelCategoryBtn">Cancel</button>
+      <button class="btn" id="saveCategoryBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ORDER DETAIL MODAL -->
+<div class="overlay" id="orderModalOverlay">
+  <div class="modal" id="orderModalBody"></div>
+</div>
+
+<script type="module" src="js/admin.js?v=6.0"></script>
+</body>
+</html>
