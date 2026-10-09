@@ -1,11 +1,11 @@
 import { db, DEFAULT_SETTINGS } from "./firebase-config.js";
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc,
-  query, orderBy, serverTimestamp
+  query, orderBy, serverTimestamp, runTransaction
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const $ = (s) => document.querySelector(s);
-let PRODUCTS = [], CATEGORIES = [], ORDERS = [];
+let PRODUCTS = [], CATEGORIES = [], ORDERS = [], REVIEWS = [];
 let editingProductId = null;
 let editingCategoryId = null;
 let uploadedImageBase64 = "";
@@ -186,6 +186,11 @@ function initData() {
     renderOrdersTable(); renderDashboard();
   });
 
+  onSnapshot(collection(db, "reviews"), (snap) => {
+    REVIEWS = []; snap.forEach(d => REVIEWS.push({ id: d.id, ...d.data() }));
+    renderReviewsTable();
+  });
+
   loadSettingsForm();
 }
 
@@ -196,9 +201,18 @@ function initData() {
 function renderDashboard() {
   if ($("#statTotalProducts")) $("#statTotalProducts").textContent = PRODUCTS.length;
   if ($("#statActiveProducts")) $("#statActiveProducts").textContent = PRODUCTS.filter(p => p.available !== false).length;
-  if ($("#statOutOfStock")) $("#statOutOfStock").textContent = PRODUCTS.filter(p => Number(p.stock) === 0).length;
+  
+  const outOfStockCount = PRODUCTS.filter(p => Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0)) <= 0).length;
+  if ($("#statOutOfStock")) $("#statOutOfStock").textContent = outOfStockCount;
+
+  const lowStockCount = PRODUCTS.filter(p => {
+    const s = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
+    return s > 0 && s <= 3;
+  }).length;
+  if ($("#statLowStock")) $("#statLowStock").textContent = lowStockCount;
+
   if ($("#statTotalOrders")) $("#statTotalOrders").textContent = ORDERS.length;
-  if ($("#statPendingOrders")) $("#statPendingOrders").textContent = ORDERS.filter(o => o.status === "Pending").length;
+  if ($("#statPendingOrders")) $("#statPendingOrders").textContent = ORDERS.filter(o => o.status !== "Delivered" && o.status !== "Cancelled").length;
   if ($("#statCompletedOrders")) $("#statCompletedOrders").textContent = ORDERS.filter(o => o.status === "Delivered").length;
   const sales = ORDERS.filter(o => o.status !== "Cancelled").reduce((s, o) => s + (o.total || 0), 0);
   if ($("#statTotalSales")) $("#statTotalSales").textContent = "₹" + sales.toLocaleString("en-IN");
@@ -262,22 +276,32 @@ function populateCategorySelect() {
 
 function renderProductsTable() {
   if (!$("#productsTbody")) return;
-  $("#productsTbody").innerHTML = PRODUCTS.map(p => `
-    <tr>
-      <td><img src="${getAdminProductImageSrc(p)}" onerror="this.style.visibility='hidden'"></td>
-      <td><strong>${p.name}</strong></td>
-      <td>${p.category || "—"}</td>
-      <td>₹${p.price}</td>
-      <td>₹${p.deliveryCharge || 0}</td>
-      <td>${p.stock ?? "—"}</td>
-      <td><span class="pill ${p.available !== false ? "yes" : "no"} toggle-visible" data-id="${p.id}" style="cursor:pointer">${p.available !== false ? "Visible" : "Hidden"}</span></td>
-      <td><span class="pill ${p.featured ? "yes" : "no"} toggle-featured" data-id="${p.id}" style="cursor:pointer">${p.featured ? "Yes" : "No"}</span></td>
-      <td class="row-actions">
-        <span class="icon-action edit-product" data-id="${p.id}" title="Edit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></span>
-        <span class="icon-action delete-product" data-id="${p.id}" title="Delete"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
-      </td>
-    </tr>
-  `).join("") || `<tr><td colspan="9" style="text-align:center;opacity:.6;padding:30px">No products found. Click "Add Product" to create one.</td></tr>`;
+  $("#productsTbody").innerHTML = PRODUCTS.map(p => {
+    const stockNum = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
+    let stockPill = `<span>${stockNum}</span>`;
+    if (stockNum <= 0) {
+      stockPill = `<span class="pill no">Out of Stock (0)</span>`;
+    } else if (stockNum <= 3) {
+      stockPill = `<span class="pill warning" style="background:#fff5eb;color:#b7791f;border:1px solid #fbd38d">Low Stock (${stockNum})</span>`;
+    }
+
+    return `
+      <tr>
+        <td><img src="${getAdminProductImageSrc(p)}" onerror="this.style.visibility='hidden'"></td>
+        <td><strong>${p.name}</strong></td>
+        <td>${p.category || "—"}</td>
+        <td>₹${p.price}</td>
+        <td>₹${p.deliveryCharge || 0}</td>
+        <td>${stockPill}</td>
+        <td><span class="pill ${p.available !== false ? "yes" : "no"} toggle-visible" data-id="${p.id}" style="cursor:pointer">${p.available !== false ? "Visible" : "Hidden"}</span></td>
+        <td><span class="pill ${p.featured ? "yes" : "no"} toggle-featured" data-id="${p.id}" style="cursor:pointer">${p.featured ? "Yes" : "No"}</span></td>
+        <td class="row-actions">
+          <span class="icon-action edit-product" data-id="${p.id}" title="Edit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></span>
+          <span class="icon-action delete-product" data-id="${p.id}" title="Delete"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+        </td>
+      </tr>
+    `;
+  }).join("") || `<tr><td colspan="9" style="text-align:center;opacity:.6;padding:30px">No products found. Click "Add Product" to create one.</td></tr>`;
 
   document.querySelectorAll(".toggle-visible").forEach(el => el.addEventListener("click", () => {
     const p = PRODUCTS.find(x => x.id === el.dataset.id);
@@ -531,32 +555,129 @@ if ($("#saveCategoryBtn")) {
 // 7. ORDERS MANAGEMENT
 // ============================================================
 
-const STATUSES = ["Pending", "Confirmed", "Processing", "Ready", "Delivered", "Cancelled"];
+const STATUSES = ["Order Placed", "Confirmed", "Preparing", "Packing", "Out for Delivery", "Delivered", "Cancelled"];
+
+async function updateOrderStatus(orderDocId, newStatus) {
+  try {
+    const orderRef = doc(db, "orders", orderDocId);
+
+    await runTransaction(db, async (transaction) => {
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists()) throw new Error("Order not found");
+
+      const orderData = orderSnap.data();
+      const oldStatus = orderData.status;
+
+      if (oldStatus === newStatus) return;
+
+      // Handle stock adjustments on Cancellation and Reactivation
+      if (newStatus === "Cancelled" && oldStatus !== "Cancelled") {
+        // Increment stock for each item in order
+        if (Array.isArray(orderData.products)) {
+          for (const item of orderData.products) {
+            if (!item.id) continue;
+            const pRef = doc(db, "products", item.id);
+            const pSnap = await transaction.get(pRef);
+            if (pSnap.exists()) {
+              const currentStock = Number(pSnap.data().stockQuantity !== undefined ? pSnap.data().stockQuantity : (pSnap.data().stock || 0));
+              const newStock = currentStock + Number(item.qty || 1);
+              transaction.update(pRef, { stockQuantity: newStock, stock: newStock, updatedAt: serverTimestamp() });
+            }
+          }
+        }
+      } else if (oldStatus === "Cancelled" && newStatus !== "Cancelled") {
+        // Re-decrement stock for each item in order, checking stock availability
+        if (Array.isArray(orderData.products)) {
+          for (const item of orderData.products) {
+            if (!item.id) continue;
+            const pRef = doc(db, "products", item.id);
+            const pSnap = await transaction.get(pRef);
+            if (pSnap.exists()) {
+              const currentStock = Number(pSnap.data().stockQuantity !== undefined ? pSnap.data().stockQuantity : (pSnap.data().stock || 0));
+              const reqQty = Number(item.qty || 1);
+              if (currentStock < reqQty) {
+                throw new Error(`Cannot reactivate order. Insufficient stock for "${item.name || item.id}" (${currentStock} available, ${reqQty} required).`);
+              }
+              const newStock = currentStock - reqQty;
+              transaction.update(pRef, { stockQuantity: newStock, stock: newStock, updatedAt: serverTimestamp() });
+            }
+          }
+        }
+      }
+
+      // Append status history entry
+      const history = Array.isArray(orderData.statusHistory) ? [...orderData.statusHistory] : [];
+      history.push({
+        status: newStatus,
+        timestamp: new Date().toISOString()
+      });
+
+      transaction.update(orderRef, {
+        status: newStatus,
+        statusHistory: history,
+        updatedAt: serverTimestamp()
+      });
+    });
+
+  } catch (err) {
+    console.error("Error updating order status:", err);
+    alert(err.message || "Failed to update order status.");
+    renderOrdersTable();
+  }
+}
+
 function renderOrdersTable() {
   if (!$("#ordersTbody")) return;
-  $("#ordersTbody").innerHTML = ORDERS.map(o => `
+
+  const searchVal = ($("#orderSearchInput")?.value || "").toLowerCase().trim();
+  const filterStatus = $("#orderStatusFilter")?.value || "All";
+
+  const filteredOrders = ORDERS.filter(o => {
+    if (filterStatus !== "All" && o.status !== filterStatus) return false;
+    if (searchVal) {
+      const matchId = (o.orderId || o.id || "").toLowerCase().includes(searchVal);
+      const matchCust = (o.customerName || "").toLowerCase().includes(searchVal);
+      const matchPhone = (o.mobile || "").toLowerCase().includes(searchVal);
+      if (!matchId && !matchCust && !matchPhone) return false;
+    }
+    return true;
+  });
+
+  $("#ordersTbody").innerHTML = filteredOrders.map(o => `
     <tr>
-      <td><strong>${o.orderId}</strong></td>
-      <td>${o.customerName}</td>
-      <td>${o.mobile}</td>
+      <td><strong>${o.orderId || o.id}</strong></td>
+      <td>${o.customerName || "—"}</td>
+      <td>${o.mobile || "—"}</td>
       <td>₹${(o.total || 0).toLocaleString("en-IN")}</td>
       <td>${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString() : "—"}</td>
-      <td><select class="status-select" data-id="${o.id}">${STATUSES.map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+      <td>
+        <select class="status-select" data-id="${o.id}">
+          ${STATUSES.map(s => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}
+        </select>
+      </td>
       <td><span class="icon-action view-order" data-id="${o.id}" title="View Order"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></td>
     </tr>
-  `).join("") || `<tr><td colspan="7" style="text-align:center;opacity:.6;padding:30px">No orders yet.</td></tr>`;
+  `).join("") || `<tr><td colspan="7" style="text-align:center;opacity:.6;padding:30px">No orders matching criteria.</td></tr>`;
 
-  document.querySelectorAll(".status-select").forEach(sel => sel.addEventListener("change", () => {
-    updateDoc(doc(db, "orders", sel.dataset.id), { status: sel.value });
-  }));
+  document.querySelectorAll(".status-select").forEach(sel => {
+    sel.addEventListener("change", async () => {
+      await updateOrderStatus(sel.dataset.id, sel.value);
+    });
+  });
   document.querySelectorAll(".view-order").forEach(el => el.addEventListener("click", () => openOrderModal(el.dataset.id)));
 }
 
+if ($("#orderSearchInput")) $("#orderSearchInput").addEventListener("input", renderOrdersTable);
+if ($("#orderStatusFilter")) $("#orderStatusFilter").addEventListener("change", renderOrdersTable);
+
 function openOrderModal(id) {
   const o = ORDERS.find(x => x.id === id);
+  if (!o) return;
   const addr = o.address || {};
+  const history = o.statusHistory || [];
+
   $("#orderModalBody").innerHTML = `
-    <h3>Order ${o.orderId}</h3>
+    <h3>Order ${o.orderId || o.id}</h3>
     <p style="margin-bottom:14px;opacity:.7;font-size:.85rem">${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString() : ""}</p>
     <div class="form-group"><label>Customer</label><p><strong>${o.customerName}</strong> · ${o.mobile}${o.whatsapp ? " · WA: " + o.whatsapp : ""}${o.email ? " · " + o.email : ""}</p></div>
     <div class="form-group"><label>Delivery Address</label><p>${addr.house || ""}, ${addr.street || ""}, ${addr.area || ""}, ${addr.city || ""}, ${addr.district || ""}, ${addr.state || ""} - ${addr.pincode || ""}</p></div>
@@ -567,11 +688,81 @@ function openOrderModal(id) {
     <div class="form-group"><label>Delivery Charge</label><p>₹${o.deliveryCharge || 0}</p></div>
     <div class="form-group"><label>Final Total</label><p style="font-weight:600;color:var(--rose-deep);font-size:1.1rem;">₹${(o.total || 0).toLocaleString("en-IN")}</p></div>
     ${o.notes ? `<div class="form-group"><label>Customer Notes</label><p>${o.notes}</p></div>` : ""}
+    ${history.length > 0 ? `
+      <div class="form-group"><label>Status History</label>
+        <ul style="font-size:.82rem; padding-left:20px; line-height:1.6; opacity:.85; max-height:120px; overflow-y:auto;">
+          ${history.map(h => `<li><strong>${h.status}</strong> — ${h.timestamp ? new Date(h.timestamp).toLocaleString() : ""}</li>`).join("")}
+        </ul>
+      </div>
+    ` : ""}
     <div class="form-actions"><button class="btn outline" id="closeOrderModal">Close</button></div>
   `;
   $("#orderModalOverlay").classList.add("open");
   $("#closeOrderModal").addEventListener("click", () => $("#orderModalOverlay").classList.remove("open"));
 }
+
+// ============================================================
+// 7.5 REVIEWS MANAGEMENT
+// ============================================================
+
+function renderReviewsTable() {
+  if (!$("#reviewsTbody")) return;
+
+  $("#reviewsTbody").innerHTML = REVIEWS.map(r => {
+    const starStr = "★".repeat(r.rating || 5) + "☆".repeat(5 - (r.rating || 5));
+    const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString() : (r.date || "—");
+
+    return `
+      <tr>
+        <td><strong>${r.productName || r.productId}</strong></td>
+        <td>${r.customerName || "Customer"} (${r.customerMobile || "—"})</td>
+        <td><span style="color:#f59e0b;font-weight:600">${starStr} (${r.rating}/5)</span></td>
+        <td style="max-width:300px;word-break:break-word;">${r.comment || "No comment."}</td>
+        <td><code>${r.orderId}</code></td>
+        <td>${dateStr}</td>
+        <td class="row-actions">
+          <span class="icon-action delete-review" data-id="${r.id}" data-pid="${r.productId}" title="Delete Review">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join("") || `<tr><td colspan="7" style="text-align:center;opacity:.6;padding:30px">No customer reviews submitted yet.</td></tr>`;
+
+  document.querySelectorAll(".delete-review").forEach(el => {
+    el.addEventListener("click", async () => {
+      if (confirm("Delete this review permanently?")) {
+        await deleteReview(el.dataset.id, el.dataset.pid);
+      }
+    });
+  });
+}
+
+async function deleteReview(reviewId, productId) {
+  try {
+    await deleteDoc(doc(db, "reviews", reviewId));
+    
+    // Recalculate avgRating and reviewCount for product
+    if (productId) {
+      const pReviews = REVIEWS.filter(r => r.id !== reviewId && r.productId === productId);
+      const reviewCount = pReviews.length;
+      let avgRating = 0;
+      if (reviewCount > 0) {
+        const sum = pReviews.reduce((acc, curr) => acc + Number(curr.rating || 5), 0);
+        avgRating = Number((sum / reviewCount).toFixed(1));
+      }
+      await updateDoc(doc(db, "products", productId), {
+        avgRating,
+        reviewCount,
+        updatedAt: serverTimestamp()
+      });
+    }
+  } catch (err) {
+    console.error("Error deleting review:", err);
+    alert("Failed to delete review: " + err.message);
+  }
+}
+
 
 // ============================================================
 // 8. SETTINGS MANAGEMENT
