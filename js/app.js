@@ -1,6 +1,7 @@
 import { db, DEFAULT_SETTINGS } from "./firebase-config.js";
 import {
-  collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc
+  collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc,
+  runTransaction, query, where, getDocs, updateDoc, setDoc
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 // ---------- EMOJI SANITIZER FOR ZERO EMOJI COMPLIANCE ----------
@@ -158,6 +159,12 @@ function renderProducts() {
   grid.innerHTML = list.map((p, i) => {
     const imageSource = getProductImage(p);
     const cleanName = removeEmojis(p.name);
+    const stockNum = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
+    const isOut = stockNum <= 0;
+    const ratingHtml = (p.reviewCount && p.reviewCount > 0)
+      ? `<div class="rating-badge">★ ${(Number(p.avgRating) || 5).toFixed(1)} (${p.reviewCount})</div>`
+      : "";
+
     return `
       <div class="product-card" style="animation-delay:${i * 0.04}s" data-id="${p.id}">
         <div class="product-img-wrap">
@@ -166,17 +173,22 @@ function renderProducts() {
         </div>
         <div class="product-info">
           <h3>${cleanName}</h3>
+          ${ratingHtml}
           <div class="desc">${(removeEmojis(p.description) || "").slice(0, 50)}</div>
           <div class="price-row">
             <span class="price">${money(p.price)}</span>
-            <span class="stock-tag ${p.stock === 0 ? "out" : ""}">${p.stock === 0 ? "Out of Stock" : "In Stock"}</span>
+            <span class="stock-tag ${isOut ? "out" : ""}">${isOut ? "Out of Stock" : "In Stock (" + stockNum + ")"}</span>
           </div>
           <div class="card-actions">
-            <button class="btn btn-outline add-cart" data-id="${p.id}">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-              Add to Cart
-            </button>
-            <button class="btn btn-primary buy-now" data-id="${p.id}">Buy Now</button>
+            ${isOut ? `
+              <button class="btn btn-outline btn-block" disabled style="opacity:0.5; cursor:not-allowed; grid-column:1/-1;">Out of Stock</button>
+            ` : `
+              <button class="btn btn-outline add-cart" data-id="${p.id}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                Add to Cart
+              </button>
+              <button class="btn btn-primary buy-now" data-id="${p.id}">Buy Now</button>
+            `}
           </div>
         </div>
       </div>
@@ -199,6 +211,11 @@ function renderProducts() {
     e.stopPropagation();
     const p = PRODUCTS.find(x => x.id === btn.dataset.id);
     if (p) {
+      const stockNum = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
+      if (stockNum <= 0) {
+        toast("Sorry, this item is out of stock.");
+        return;
+      }
       buyNowItem = {
         ...p,
         name: removeEmojis(p.name),
@@ -567,50 +584,359 @@ async function submitOrder() {
   const total = getCheckoutTotal();
   const orderId = await generateOrderId();
 
-  const orderData = {
-    orderId,
-    customerName: $("#custName").value,
-    mobile: $("#custMobile").value,
-    whatsapp: $("#custWhatsapp").value,
-    email: $("#custEmail").value || "",
-    address: {
-      house: $("#addrHouse").value, street: $("#addrStreet").value, area: $("#addrArea").value,
-      city: $("#addrCity").value, district: $("#addrDistrict").value, state: $("#addrState").value, pincode: $("#addrPincode").value,
-    },
-    products: items,
-    subtotal,
-    deliveryCharge,
-    total,
-    status: "Pending",
-    notes: $("#specialNotes").value || "",
-    createdAt: serverTimestamp(),
-  };
-
-  try {
-    await addDoc(collection(db, "orders"), orderData);
-  } catch (e) {
-    console.warn("Order not saved to Firestore:", e.message);
+  const nextBtn = $("#nextStep");
+  if (nextBtn) {
+    nextBtn.disabled = true;
+    nextBtn.textContent = "Processing Order...";
   }
 
-  const waMessage = buildWhatsappMessage(orderId, items, subtotal, deliveryCharge, total);
-  const waUrl = `https://wa.me/${SETTINGS.whatsapp}?text=${encodeURIComponent(waMessage)}`;
-  lastOrder = { orderId, waUrl };
+  try {
+    // Atomic Stock Verification & Order Creation Transaction
+    await runTransaction(db, async (transaction) => {
+      const productUpdates = [];
 
-  if (checkoutMode === "cart") { CART = []; saveCart(); renderCart(); }
-  buyNowItem = null;
+      // Step 1: Read all products and verify stock atomically
+      for (const item of items) {
+        if (!item.id) continue;
+        const pRef = doc(db, "products", item.id);
+        const pSnap = await transaction.get(pRef);
+        if (!pSnap.exists()) {
+          throw new Error(`Product "${item.name}" is no longer available.`);
+        }
+        const pData = pSnap.data();
+        const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : (pData.stock || 0));
+        if (currentStock < item.qty) {
+          throw new Error(`Insufficient stock for "${item.name}". Only ${currentStock} item(s) left.`);
+        }
+        productUpdates.push({ ref: pRef, newStock: currentStock - item.qty });
+      }
 
-  $("#checkoutOverlay").classList.remove("open");
-  $("#confirmOrderId").textContent = orderId;
-  $("#confirmOverlay").classList.add("open");
-  window.open(waUrl, "_blank");
+      // Step 2: Decrement stock for all items
+      for (const update of productUpdates) {
+        transaction.update(update.ref, {
+          stockQuantity: update.newStock,
+          stock: update.newStock,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      // Step 3: Create Order Document
+      const newOrderRef = doc(collection(db, "orders"));
+      const orderData = {
+        orderId,
+        customerName: $("#custName").value.trim(),
+        mobile: $("#custMobile").value.trim(),
+        whatsapp: $("#custWhatsapp").value.trim(),
+        email: $("#custEmail").value.trim() || "",
+        address: {
+          house: $("#addrHouse").value.trim(),
+          street: $("#addrStreet").value.trim(),
+          area: $("#addrArea").value.trim(),
+          city: $("#addrCity").value.trim(),
+          district: $("#addrDistrict").value.trim(),
+          state: $("#addrState").value.trim(),
+          pincode: $("#addrPincode").value.trim(),
+        },
+        products: items,
+        subtotal,
+        deliveryCharge,
+        total,
+        status: "Order Placed",
+        statusHistory: [
+          {
+            status: "Order Placed",
+            timestamp: new Date().toISOString(),
+            note: "Order placed by customer"
+          }
+        ],
+        notes: $("#specialNotes").value.trim() || "",
+        createdAt: serverTimestamp(),
+      };
+      transaction.set(newOrderRef, orderData);
+    });
+
+    const waMessage = buildWhatsappMessage(orderId, items, subtotal, deliveryCharge, total);
+    const waUrl = `https://wa.me/${SETTINGS.whatsapp}?text=${encodeURIComponent(waMessage)}`;
+    lastOrder = { orderId, waUrl };
+
+    if (checkoutMode === "cart") { CART = []; saveCart(); renderCart(); }
+    buyNowItem = null;
+
+    $("#checkoutOverlay").classList.remove("open");
+    $("#confirmOrderId").textContent = orderId;
+    $("#confirmOverlay").classList.add("open");
+    window.open(waUrl, "_blank");
+
+  } catch (err) {
+    console.error("Order submit transaction error:", err);
+    alert(`Order Failed: ${err.message}`);
+    toast(`Order Failed: ${err.message}`);
+  } finally {
+    if (nextBtn) {
+      nextBtn.disabled = false;
+      nextBtn.textContent = "Continue";
+    }
+  }
 }
 
-if ($("#openWhatsappBtn")) $("#openWhatsappBtn").addEventListener("click", () => { if (lastOrder) window.open(lastOrder.waUrl, "_blank"); });
-if ($("#continueShoppingBtn")) $("#continueShoppingBtn").addEventListener("click", () => {
-  $("#confirmOverlay").classList.remove("open");
-  const shopSection = document.getElementById("shop");
-  if (shopSection) shopSection.scrollIntoView({ behavior: "smooth" });
-});
+// ---------- TRACK YOUR ORDER (REAL-TIME STATUS & TIMELINE) ----------
+let currentTrackedOrder = null;
+
+if ($("#trackOrderForm")) {
+  $("#trackOrderForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const orderIdInput = $("#trackOrderId").value.trim().toUpperCase();
+    const verifyInput = $("#trackVerifyInput").value.trim();
+    const btn = $("#trackSubmitBtn");
+
+    if (!orderIdInput || !verifyInput) {
+      toast("Please enter Order ID and Verification Mobile/Pincode.");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Verifying...";
+
+    try {
+      const q = query(collection(db, "orders"), where("orderId", "==", orderIdInput));
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        toast("No order found with ID: " + orderIdInput);
+        $("#trackResultWrap").style.display = "none";
+        return;
+      }
+
+      let matchedDoc = null;
+      snap.forEach(d => {
+        const data = d.data();
+        const mob = (data.mobile || "").replace(/\s/g, "");
+        const wa = (data.whatsapp || "").replace(/\s/g, "");
+        const pin = (data.address?.pincode || "").replace(/\s/g, "");
+        const cleanInput = verifyInput.replace(/\s/g, "");
+
+        if (cleanInput && (mob.endsWith(cleanInput) || wa.endsWith(cleanInput) || pin === cleanInput)) {
+          matchedDoc = { id: d.id, ...data };
+        }
+      });
+
+      if (!matchedDoc) {
+        alert("Security Verification Failed: The Mobile Number or Pincode does not match this Order ID.");
+        toast("Verification failed.");
+        $("#trackResultWrap").style.display = "none";
+        return;
+      }
+
+      currentTrackedOrder = matchedDoc;
+      renderTrackResult(matchedDoc);
+
+      // Listen for real-time order status updates!
+      onSnapshot(doc(db, "orders", matchedDoc.id), (docSnap) => {
+        if (docSnap.exists()) {
+          currentTrackedOrder = { id: docSnap.id, ...docSnap.data() };
+          renderTrackResult(currentTrackedOrder);
+        }
+      });
+
+    } catch (err) {
+      console.error("Track order error:", err);
+      toast("Error tracking order: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Track Order";
+    }
+  });
+}
+
+function renderTrackResult(o) {
+  const wrap = $("#trackResultWrap");
+  if (!wrap) return;
+
+  $("#trackDisplayOrderId").textContent = `Order #${o.orderId}`;
+  $("#trackDisplayDate").textContent = `Placed on ${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString() : "Recently"}`;
+  
+  const statusBadge = $("#trackStatusBadge");
+  if (statusBadge) {
+    statusBadge.textContent = o.status || "Order Placed";
+    statusBadge.className = "status-pill-badge " + (o.status === "Cancelled" ? "cancelled" : (o.status === "Delivered" ? "delivered" : "active"));
+  }
+
+  // 6-step lifecycle timeline
+  const lifecycleSteps = ["Order Placed", "Confirmed", "Preparing", "Packing", "Out for Delivery", "Delivered"];
+  const currentStatusIndex = lifecycleSteps.indexOf(o.status);
+
+  document.querySelectorAll("#timelineStepper .step-node").forEach((node) => {
+    const stepName = node.dataset.step;
+    const stepIdx = lifecycleSteps.indexOf(stepName);
+    node.classList.remove("active", "completed");
+
+    if (o.status === "Cancelled") {
+      // Cancelled state
+    } else if (stepIdx < currentStatusIndex) {
+      node.classList.add("completed");
+    } else if (stepIdx === currentStatusIndex) {
+      node.classList.add("active");
+    }
+  });
+
+  const cancelBanner = $("#cancelledBanner");
+  if (cancelBanner) {
+    cancelBanner.style.display = o.status === "Cancelled" ? "block" : "none";
+  }
+
+  // Render Status History Timeline with timestamps
+  const historyWrap = $("#trackHistoryTimeline");
+  if (historyWrap) {
+    const historyList = o.statusHistory || [{ status: o.status || "Order Placed", timestamp: new Date().toISOString() }];
+    historyWrap.innerHTML = historyList.map(h => `
+      <div class="history-item">
+        <span class="hist-status">${h.status}</span>
+        <span class="hist-time">${h.timestamp ? new Date(h.timestamp).toLocaleString() : ""}</span>
+      </div>
+    `).join("");
+  }
+
+  // Render Order Items
+  const itemsWrap = $("#trackItemsList");
+  if (itemsWrap) {
+    itemsWrap.innerHTML = (o.products || []).map(p => `
+      <div class="track-item-row">
+        <span><strong>${removeEmojis(p.name)}</strong> ${p.color ? "(" + removeEmojis(p.color) + ")" : ""} × ${p.qty}</span>
+        <span>${money((p.price || 0) * (p.qty || 1))}</span>
+      </div>
+    `).join("");
+  }
+
+  if ($("#trackSubtotal")) $("#trackSubtotal").textContent = money(o.subtotal || 0);
+  if ($("#trackDelivery")) $("#trackDelivery").textContent = money(o.deliveryCharge || 0);
+  if ($("#trackTotal")) $("#trackTotal").textContent = money(o.total || 0);
+
+  // Review Prompt (Delivered Orders Only)
+  const revPrompt = $("#trackReviewPrompt");
+  if (revPrompt) {
+    revPrompt.style.display = o.status === "Delivered" ? "block" : "none";
+  }
+
+  wrap.style.display = "block";
+  wrap.scrollIntoView({ behavior: "smooth" });
+}
+
+// ---------- VERIFIED PRODUCT REVIEWS ----------
+if ($("#openReviewModalBtn")) {
+  $("#openReviewModalBtn").addEventListener("click", () => {
+    if (!currentTrackedOrder) return;
+    $("#revOrderId").value = currentTrackedOrder.orderId;
+    $("#revMobile").value = currentTrackedOrder.mobile;
+    $("#revCustName").value = currentTrackedOrder.customerName;
+
+    const select = $("#revProductSelect");
+    if (select) {
+      select.innerHTML = `<option value="">Select Item from Order</option>` +
+        (currentTrackedOrder.products || []).map(p => `<option value="${p.id}">${removeEmojis(p.name)}</option>`).join("");
+    }
+    $("#reviewModalOverlay").classList.add("open");
+  });
+}
+
+if ($("#closeReviewModal")) {
+  $("#closeReviewModal").addEventListener("click", () => {
+    $("#reviewModalOverlay").classList.remove("open");
+  });
+}
+
+if ($("#reviewForm")) {
+  $("#reviewForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const orderId = $("#revOrderId").value.trim().toUpperCase();
+    const mobile = $("#revMobile").value.trim();
+    const productId = $("#revProductSelect").value;
+    const name = $("#revCustName").value.trim();
+    const rating = Number($("#revRating").value);
+    const comment = $("#revComment").value.trim();
+    const btn = $("#submitReviewBtn");
+
+    if (!orderId || !mobile || !productId || !name || !comment) {
+      toast("Please fill in all review fields.");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Submitting Review...";
+
+    try {
+      // Step 1: Verify Purchaser & Order Status = Delivered
+      const q = query(collection(db, "orders"), where("orderId", "==", orderId));
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        throw new Error("Order ID not found.");
+      }
+
+      let validOrder = null;
+      snap.forEach(d => {
+        const data = d.data();
+        if ((data.mobile || "").replace(/\s/g, "").endsWith(mobile.replace(/\s/g, ""))) {
+          validOrder = data;
+        }
+      });
+
+      if (!validOrder) {
+        throw new Error("Mobile number does not match Order ID.");
+      }
+
+      if (validOrder.status !== "Delivered") {
+        throw new Error("Reviews can only be submitted for Delivered orders.");
+      }
+
+      // Step 2: Prevent Duplicate Reviews
+      const reviewDocId = `${orderId}_${productId}`;
+      const revRef = doc(db, "reviews", reviewDocId);
+      const revSnap = await getDoc(revRef);
+
+      if (revSnap.exists()) {
+        throw new Error("You have already submitted a review for this item from this order.");
+      }
+
+      // Step 3: Save Review Document
+      await setDoc(revRef, {
+        reviewId: reviewDocId,
+        orderId,
+        productId,
+        customerName: removeEmojis(name),
+        rating,
+        comment: removeEmojis(comment),
+        status: "approved",
+        createdAt: serverTimestamp()
+      });
+
+      // Step 4: Atomic Recalculation of Average Product Rating
+      const revQ = query(collection(db, "reviews"), where("productId", "==", productId), where("status", "==", "approved"));
+      const allRevsSnap = await getDocs(revQ);
+      let sumRating = 0, count = 0;
+      allRevsSnap.forEach(rd => {
+        sumRating += Number(rd.data().rating || 5);
+        count++;
+      });
+
+      const avgRating = count > 0 ? (sumRating / count) : rating;
+      await updateDoc(doc(db, "products", productId), {
+        avgRating,
+        reviewCount: count
+      });
+
+      alert("Thank you! Your verified review has been published.");
+      toast("Review submitted successfully!");
+      $("#reviewModalOverlay").classList.remove("open");
+
+    } catch (err) {
+      console.error("Submit review error:", err);
+      alert("Review Error: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Submit Verified Review";
+    }
+  });
+}
 
 // ---------- INIT ----------
 renderCartBadge();
