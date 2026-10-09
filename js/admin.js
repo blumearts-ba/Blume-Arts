@@ -317,11 +317,31 @@ function renderProductsTable() {
   }));
 }
 
+let productImagesSlots = ["", "", "", ""];
+
+function updateSlotPreviewUI(idx) {
+  const preview = $("#slotPreview" + idx);
+  const removeBtn = document.querySelector(`.remove-slot-img[data-idx="${idx}"]`);
+  const src = productImagesSlots[idx];
+  if (preview) {
+    if (src) {
+      preview.src = src;
+      preview.style.display = "block";
+      if (removeBtn) removeBtn.style.display = "block";
+    } else {
+      preview.src = "";
+      preview.style.display = "none";
+      if (removeBtn) removeBtn.style.display = "none";
+    }
+  }
+}
+
 function openProductModal(id) {
   editingProductId = id || null;
-  uploadedImageBase64 = "";
+  productImagesSlots = ["", "", "", ""];
   $("#customFieldsWrap").innerHTML = "";
-  $("#fImageFile").value = "";
+
+  document.querySelectorAll(".f-img-file").forEach(input => input.value = "");
 
   if (id) {
     const p = PRODUCTS.find(x => x.id === id);
@@ -329,20 +349,23 @@ function openProductModal(id) {
     $("#fName").value = p.name || "";
     $("#fPrice").value = p.price || "";
     $("#fDeliveryCharge").value = p.deliveryCharge || 0;
-    $("#fStock").value = p.stock ?? 10;
+    $("#fStock").value = p.stockQuantity ?? p.stock ?? 10;
     $("#fCategory").value = p.category || "";
     $("#fColors").value = (p.colors || []).join(", ");
     $("#fDescription").value = p.description || "";
     $("#fAvailable").value = String(p.available !== false);
     $("#fFeatured").value = String(!!p.featured);
-    uploadedImageBase64 = getAdminProductImageSrc(p);
 
-    if (uploadedImageBase64) {
-      $("#fImagePreview").src = uploadedImageBase64;
-      $("#fImagePreview").style.display = "block";
+    if (Array.isArray(p.images) && p.images.length > 0) {
+      for (let i = 0; i < 4; i++) {
+        productImagesSlots[i] = p.images[i] || "";
+      }
     } else {
-      $("#fImagePreview").style.display = "none";
+      productImagesSlots[0] = getAdminProductImageSrc(p);
     }
+
+    for (let i = 0; i < 4; i++) updateSlotPreviewUI(i);
+
     Object.entries(p.customFields || {}).forEach(([k, v]) => addCustomFieldRow(k, v));
   } else {
     $("#productModalTitle").textContent = "Add Product";
@@ -351,7 +374,8 @@ function openProductModal(id) {
     $("#fStock").value = 10;
     $("#fAvailable").value = "true";
     $("#fFeatured").value = "false";
-    $("#fImagePreview").style.display = "none";
+
+    for (let i = 0; i < 4; i++) updateSlotPreviewUI(i);
   }
   $("#productModalOverlay").classList.add("open");
 }
@@ -368,21 +392,33 @@ function addCustomFieldRow(key = "", value = "") {
 }
 if ($("#addCustomFieldBtn")) $("#addCustomFieldBtn").addEventListener("click", () => addCustomFieldRow());
 
-if ($("#fImageFile")) {
-  $("#fImageFile").addEventListener("change", async (e) => {
+// Slot image change listeners
+document.querySelectorAll(".f-img-file").forEach(input => {
+  input.addEventListener("change", async (e) => {
+    const idx = Number(input.dataset.idx);
     const file = e.target.files[0];
     if (!file) return;
     try {
       const base64Data = await compressAndConvertToBase64(file);
-      uploadedImageBase64 = base64Data;
-      $("#fImagePreview").src = base64Data;
-      $("#fImagePreview").style.display = "block";
+      productImagesSlots[idx] = base64Data;
+      updateSlotPreviewUI(idx);
     } catch (err) {
-      alert(err.message || "Error compressing image.");
-      $("#fImageFile").value = "";
+      alert(err.message || "Error processing image.");
+      input.value = "";
     }
   });
-}
+});
+
+// Slot remove image listeners
+document.querySelectorAll(".remove-slot-img").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const idx = Number(btn.dataset.idx);
+    productImagesSlots[idx] = "";
+    const input = document.querySelector(`.f-img-file[data-idx="${idx}"]`);
+    if (input) input.value = "";
+    updateSlotPreviewUI(idx);
+  });
+});
 
 // Save Product
 if ($("#saveProductBtn")) {
@@ -416,8 +452,6 @@ if ($("#saveProductBtn")) {
     const originalText = saveBtn.textContent;
     saveBtn.textContent = "Saving Product...";
 
-    console.log("STEP 1: Product save process started");
-
     try {
       const customFields = {};
       document.querySelectorAll(".custom-field-row").forEach(row => {
@@ -427,34 +461,12 @@ if ($("#saveProductBtn")) {
       });
 
       const existingProduct = editingProductId ? PRODUCTS.find(x => x.id === editingProductId) : null;
-      let imageUrl = getAdminProductImageSrc(existingProduct) || "";
-
-      // Document reference in Firestore 'products' collection
       const productDocRef = editingProductId
         ? doc(db, "products", editingProductId)
         : doc(collection(db, "products"));
 
-      const productId = productDocRef.id;
-
-      // Process Image: Convert selected image file to compressed Base64 Data URL (Firestore-only)
-      const fileInput = $("#fImageFile");
-      const file = fileInput && fileInput.files ? fileInput.files[0] : null;
-
-      if (file) {
-        console.log("Processing and compressing image for product ID:", productId);
-        try {
-          imageUrl = await compressAndConvertToBase64(file);
-          console.log("Image compressed and converted to Base64 Data URL successfully");
-        } catch (imgErr) {
-          console.error("Image Processing Error:", imgErr);
-          alert(imgErr.message || "Error processing image file.");
-          saveBtn.disabled = false;
-          saveBtn.textContent = originalText;
-          return;
-        }
-      } else if (uploadedImageBase64) {
-        imageUrl = uploadedImageBase64;
-      }
+      const imagesArray = productImagesSlots.filter(Boolean);
+      const mainImageUrl = imagesArray[0] || (existingProduct ? getAdminProductImageSrc(existingProduct) : "");
 
       const productData = {
         name,
@@ -465,8 +477,9 @@ if ($("#saveProductBtn")) {
         category,
         colors,
         description,
-        imageUrl: imageUrl || "",
-        imageBase64: imageUrl || "",
+        images: imagesArray.length > 0 ? imagesArray : (mainImageUrl ? [mainImageUrl] : []),
+        imageUrl: mainImageUrl || "",
+        imageBase64: mainImageUrl || "",
         visible,
         available: visible,
         featured,
@@ -478,26 +491,18 @@ if ($("#saveProductBtn")) {
         productData.createdAt = existingProduct?.createdAt || serverTimestamp();
       }
 
-      console.log("Product data:", productData);
-      console.log("STEP 4: Saving product to Firestore path:", productDocRef.path);
-
       await setDoc(productDocRef, productData, { merge: true });
 
-      console.log("STEP 5: Product saved successfully");
       alert("Product saved successfully.");
       $("#productModalOverlay").classList.remove("open");
 
-      // Reset modal state
       editingProductId = null;
-      uploadedImageBase64 = "";
-      if ($("#fImageFile")) $("#fImageFile").value = "";
-      if ($("#fImagePreview")) $("#fImagePreview").style.display = "none";
+      productImagesSlots = ["", "", "", ""];
+      for (let i = 0; i < 4; i++) updateSlotPreviewUI(i);
 
     } catch (error) {
       console.error("Firebase Error:", error);
-      console.error("Firebase Error Code:", error.code);
-      console.error("Firebase Error Message:", error.message);
-      alert(`Error saving product [${error.code || "error"}]: ${error.message}`);
+      alert(`Error saving product: ${error.message}`);
     } finally {
       saveBtn.disabled = false;
       saveBtn.textContent = originalText;
@@ -570,9 +575,7 @@ async function updateOrderStatus(orderDocId, newStatus) {
 
       if (oldStatus === newStatus) return;
 
-      // Handle stock adjustments on Cancellation and Reactivation
       if (newStatus === "Cancelled" && oldStatus !== "Cancelled") {
-        // Increment stock for each item in order
         if (Array.isArray(orderData.products)) {
           for (const item of orderData.products) {
             if (!item.id) continue;
@@ -586,7 +589,6 @@ async function updateOrderStatus(orderDocId, newStatus) {
           }
         }
       } else if (oldStatus === "Cancelled" && newStatus !== "Cancelled") {
-        // Re-decrement stock for each item in order, checking stock availability
         if (Array.isArray(orderData.products)) {
           for (const item of orderData.products) {
             if (!item.id) continue;
@@ -605,7 +607,6 @@ async function updateOrderStatus(orderDocId, newStatus) {
         }
       }
 
-      // Append status history entry
       const history = Array.isArray(orderData.statusHistory) ? [...orderData.statusHistory] : [];
       history.push({
         status: newStatus,
@@ -690,15 +691,65 @@ function openOrderModal(id) {
     ${o.notes ? `<div class="form-group"><label>Customer Notes</label><p>${o.notes}</p></div>` : ""}
     ${history.length > 0 ? `
       <div class="form-group"><label>Status History</label>
-        <ul style="font-size:.82rem; padding-left:20px; line-height:1.6; opacity:.85; max-height:120px; overflow-y:auto;">
+        <ul style="font-size:.82rem; padding-left:20px; line-height:1.6; opacity:.85; max-height:100px; overflow-y:auto;">
           ${history.map(h => `<li><strong>${h.status}</strong> — ${h.timestamp ? new Date(h.timestamp).toLocaleString() : ""}</li>`).join("")}
         </ul>
       </div>
     ` : ""}
+    <div class="form-group" style="margin-top:16px; border-top:1px solid var(--beige); padding-top:12px;">
+      <label style="font-weight:600; color:var(--rose-deep);">Messages to Customer</label>
+      <div id="adminSellerMessagesList" style="max-height:140px; overflow-y:auto; font-size:.82rem; margin-bottom:10px; display:flex; flex-direction:column; gap:6px;"></div>
+      <div style="display:flex; gap:8px;">
+        <input id="adminSellerMsgInput" placeholder="Type a custom message for customer..." style="flex:1; padding:8px 12px; border:1px solid var(--beige); border-radius:8px; font-size:.82rem;">
+        <button class="btn sm" id="sendSellerMsgBtn">Send Message</button>
+      </div>
+    </div>
     <div class="form-actions"><button class="btn outline" id="closeOrderModal">Close</button></div>
   `;
   $("#orderModalOverlay").classList.add("open");
   $("#closeOrderModal").addEventListener("click", () => $("#orderModalOverlay").classList.remove("open"));
+
+  // Real-Time listener for seller messages on this order
+  const msgList = $("#adminSellerMessagesList");
+  if (msgList) {
+    onSnapshot(collection(db, "orders", o.id, "sellerMessages"), (snap) => {
+      if (snap.empty) {
+        msgList.innerHTML = `<p style="opacity:.6; font-style:italic;">No messages sent yet.</p>`;
+        return;
+      }
+      const docs = [];
+      snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+      docs.sort((a, b) => {
+        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+        return tA - tB;
+      });
+
+      msgList.innerHTML = docs.map(data => {
+        const timeStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString() : (data.timestamp ? new Date(data.timestamp).toLocaleString() : "");
+        return `<div style="background:var(--cream); padding:6px 10px; border-radius:6px;"><strong>Seller:</strong> ${data.messageText} <span style="opacity:.6; font-size:.7rem; float:right;">${timeStr}</span></div>`;
+      }).join("");
+    });
+  }
+
+  if ($("#sendSellerMsgBtn")) {
+    $("#sendSellerMsgBtn").addEventListener("click", async () => {
+      const input = $("#adminSellerMsgInput");
+      const text = input ? input.value.trim() : "";
+      if (!text) return;
+      try {
+        await addDoc(collection(db, "orders", o.id, "sellerMessages"), {
+          orderId: o.orderId || o.id,
+          messageText: text,
+          sender: "seller",
+          createdAt: serverTimestamp()
+        });
+        input.value = "";
+      } catch (err) {
+        alert("Failed to send message: " + err.message);
+      }
+    });
+  }
 }
 
 // ============================================================
