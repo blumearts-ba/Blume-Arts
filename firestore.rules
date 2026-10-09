@@ -25,5 +25,9 @@ service cloud.firestore {
     match /reviews/{reviewId} {
       allow read, write: if true;
     }
+
+    match /orders/{orderId}/sellerMessages/{messageId} {
+      allow read, write: if true;
+    }
   }
 }
