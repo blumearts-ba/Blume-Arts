@@ -64,6 +64,7 @@
       <a href="#" class="tab-link" data-tab="products" id="navProducts"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></span> Products</a>
       <a href="#" class="tab-link" data-tab="categories" id="navCategories"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg></span> Categories</a>
       <a href="#" class="tab-link" data-tab="orders" id="navOrders"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span> Sales</a>
+      <a href="#" class="tab-link" data-tab="reviews" id="navReviews"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></span> Reviews</a>
       <a href="#" class="tab-link" data-tab="settings" id="navSettings"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span> Settings</a>
       <a href="#" class="tab-link" data-tab="access" id="navAccess"><span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span> Access Management</a>
     </nav>
@@ -81,6 +82,7 @@
         <div class="stat-card"><div class="label">Total Products</div><div class="value" id="statTotalProducts">0</div></div>
         <div class="stat-card"><div class="label">Active Products</div><div class="value" id="statActiveProducts">0</div></div>
         <div class="stat-card"><div class="label">Out of Stock</div><div class="value" id="statOutOfStock">0</div></div>
+        <div class="stat-card"><div class="label" style="color:#b7791f">Low Stock (≤3)</div><div class="value" id="statLowStock" style="color:#b7791f">0</div></div>
         <div class="stat-card"><div class="label">Total Orders</div><div class="value" id="statTotalOrders">0</div></div>
         <div class="stat-card"><div class="label">Pending Orders</div><div class="value" id="statPendingOrders">0</div></div>
         <div class="stat-card"><div class="label">Completed Orders</div><div class="value" id="statCompletedOrders">0</div></div>
@@ -120,10 +122,36 @@
 
     <!-- ORDERS / SALES -->
     <div class="tab-view" id="tab-orders">
-      <h1>Sales & Orders</h1>
+      <div class="toolbar">
+        <h1>Sales & Orders</h1>
+        <div class="filter-controls" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="text" id="orderSearchInput" placeholder="Search Order ID, Customer, Phone..." style="padding:8px 12px; border:1px solid var(--beige); border-radius:8px; font-size:.82rem; min-width:200px;">
+          <select id="orderStatusFilter" style="padding:8px 12px; border:1px solid var(--beige); border-radius:8px; font-size:.82rem;">
+            <option value="All">All Statuses</option>
+            <option value="Order Placed">Order Placed</option>
+            <option value="Confirmed">Confirmed</option>
+            <option value="Preparing">Preparing</option>
+            <option value="Packing">Packing</option>
+            <option value="Out for Delivery">Out for Delivery</option>
+            <option value="Delivered">Delivered</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
       <div class="card-table"><table>
         <thead><tr><th>Order ID</th><th>Customer</th><th>Phone</th><th>Total</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody id="ordersTbody"></tbody>
+      </table></div>
+    </div>
+
+    <!-- REVIEWS -->
+    <div class="tab-view" id="tab-reviews">
+      <div class="toolbar">
+        <h1>Verified Customer Reviews</h1>
+      </div>
+      <div class="card-table"><table>
+        <thead><tr><th>Product</th><th>Customer</th><th>Rating</th><th>Review</th><th>Order ID</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody id="reviewsTbody"></tbody>
       </table></div>
     </div>
 
@@ -258,6 +286,6 @@
   <div class="modal" id="orderModalBody"></div>
 </div>
 
-<script type="module" src="js/admin.js?v=6.0"></script>
+<script type="module" src="js/admin.js?v=7.0"></script>
 </body>
 </html>
