@@ -185,6 +185,14 @@
           <div id="trackHistoryTimeline" class="history-timeline-list"></div>
         </div>
 
+        <div class="track-messages-block" id="trackMessagesWrap" style="display:none; margin-bottom:20px; background:var(--ivory); padding:16px; border-radius:14px; border:1px solid var(--beige);">
+          <div class="block-label" style="display:flex; align-items:center; gap:6px; color:var(--rose-deep); font-size:.8rem; font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            Messages from Seller
+          </div>
+          <div id="trackSellerMessagesList" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+
         <div class="track-items-block">
           <div class="block-label">Order Items</div>
           <div id="trackItemsList" class="track-items-list"></div>
@@ -305,20 +313,29 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
     </button>
     <div class="pd-grid">
-      <div class="pd-img"><img id="pdImage" src="" alt=""></div>
+      <div class="pd-gallery-wrap" id="pdGalleryWrap">
+        <div class="main-img-container" style="position:relative; width:100%; aspect-ratio:1/1; border-radius:16px; overflow:hidden; background:var(--blush);">
+          <img id="pdImage" src="" alt="" style="width:100%; height:100%; object-fit:cover; display:block;">
+          <button class="gallery-arrow prev" id="pdGalleryPrev" aria-label="Previous Image" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.9); border:none; border-radius:50%; width:36px; height:36px; display:none; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.15); color:var(--brown); font-size:1.1rem; font-weight:bold;">❮</button>
+          <button class="gallery-arrow next" id="pdGalleryNext" aria-label="Next Image" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.9); border:none; border-radius:50%; width:36px; height:36px; display:none; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.15); color:var(--brown); font-size:1.1rem; font-weight:bold;">❯</button>
+          <div class="gallery-dots" id="pdGalleryDots" style="position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:5;"></div>
+        </div>
+        <div class="thumbnail-strip" id="pdGalleryThumbnails" style="display:flex; gap:8px; margin-top:10px; overflow-x:auto; padding-bottom:4px;"></div>
+      </div>
       <div class="pd-body">
         <h2 id="pdName"></h2>
+        <div id="pdStockBadgeWrap" style="margin-bottom:8px;"></div>
         <div class="pd-price" id="pdPrice"></div>
         <p class="desc" id="pdDesc"></p>
         <div id="pdOptions"></div>
-        <div class="qty-row">
+        <div class="qty-row" id="pdQtyRow">
           <span style="font-weight:600;font-size:.85rem">Quantity</span>
           <div class="qty-control">
             <button id="pdMinus">−</button><span id="pdQty">1</span><button id="pdPlus">+</button>
           </div>
         </div>
-        <div class="pd-total">Total: <b id="pdTotal">₹0</b></div>
-        <div class="pd-actions">
+        <div class="pd-total" id="pdTotalRow">Total: <b id="pdTotal">₹0</b></div>
+        <div class="pd-actions" id="pdActions">
           <button class="btn btn-outline btn-block" id="pdAddCart">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
             Add to Cart
@@ -451,7 +468,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="js/app.js?v=7.0"></script>
+<script type="module" src="js/app.js?v=8.1"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
