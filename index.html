@@ -21,6 +21,7 @@
     <ul class="nav-links">
       <li><a href="#home" class="active">Home</a></li>
       <li><a href="#shop">Shop</a></li>
+      <li><a href="#track-order">Track Order</a></li>
       <li><a href="#about">About</a></li>
       <li><a href="#contact">Contact</a></li>
     </ul>
@@ -36,7 +37,7 @@
     </div>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
-    <a href="#home">Home</a><a href="#shop">Shop</a><a href="#about">About</a><a href="#contact">Contact</a>
+    <a href="#home">Home</a><a href="#shop">Shop</a><a href="#track-order">Track Order</a><a href="#about">About</a><a href="#contact">Contact</a>
   </div>
 </header>
 
@@ -113,6 +114,90 @@
     </div>
     <div class="product-grid" id="productGrid">
       <div class="empty-state">Loading products...</div>
+    </div>
+  </div>
+</section>
+
+<!-- TRACK YOUR ORDER -->
+<section id="track-order" class="track-section">
+  <div class="container">
+    <div class="section-title">
+      <span class="eyebrow">Real-Time Status</span>
+      <h2>Track Your Order</h2>
+    </div>
+    <div class="track-card">
+      <form id="trackOrderForm" class="track-form">
+        <div class="track-input-group">
+          <label for="trackOrderId">Order ID *</label>
+          <input type="text" id="trackOrderId" placeholder="e.g. BA-123456" required>
+        </div>
+        <div class="track-input-group">
+          <label for="trackVerifyInput">Mobile Number or Pincode (for verification) *</label>
+          <input type="text" id="trackVerifyInput" placeholder="Enter Mobile or Pincode" required>
+        </div>
+        <button type="submit" class="btn btn-primary" id="trackSubmitBtn">Track Order</button>
+      </form>
+
+      <div id="trackResultWrap" class="track-result-wrap" style="display:none">
+        <div class="track-header-banner">
+          <div>
+            <span class="track-order-num" id="trackDisplayOrderId">Order #</span>
+            <div class="track-order-date" id="trackDisplayDate">Placed on ...</div>
+          </div>
+          <span class="status-pill-badge" id="trackStatusBadge">Order Placed</span>
+        </div>
+
+        <div class="track-timeline-wrap">
+          <div class="timeline-title">Order Lifecycle Progress</div>
+          <div class="timeline-stepper" id="timelineStepper">
+            <div class="step-node" data-step="Order Placed">
+              <div class="node-dot">1</div>
+              <div class="node-label">Placed</div>
+            </div>
+            <div class="step-node" data-step="Confirmed">
+              <div class="node-dot">2</div>
+              <div class="node-label">Confirmed</div>
+            </div>
+            <div class="step-node" data-step="Preparing">
+              <div class="node-dot">3</div>
+              <div class="node-label">Preparing</div>
+            </div>
+            <div class="step-node" data-step="Packing">
+              <div class="node-dot">4</div>
+              <div class="node-label">Packing</div>
+            </div>
+            <div class="step-node" data-step="Out for Delivery">
+              <div class="node-dot">5</div>
+              <div class="node-label">Out for Delivery</div>
+            </div>
+            <div class="step-node" data-step="Delivered">
+              <div class="node-dot">6</div>
+              <div class="node-label">Delivered</div>
+            </div>
+          </div>
+          <div class="cancelled-banner" id="cancelledBanner" style="display:none">
+            ⚠️ Order Status: Cancelled. Stock has been safely restored.
+          </div>
+        </div>
+
+        <div class="track-history-block">
+          <div class="block-label">Status Timestamp History</div>
+          <div id="trackHistoryTimeline" class="history-timeline-list"></div>
+        </div>
+
+        <div class="track-items-block">
+          <div class="block-label">Order Items</div>
+          <div id="trackItemsList" class="track-items-list"></div>
+          <div class="track-totals-row">
+            <div>Subtotal: <b id="trackSubtotal">₹0</b> | Delivery: <b id="trackDelivery">₹0</b></div>
+            <div class="final-total">Total: <b id="trackTotal">₹0</b></div>
+          </div>
+        </div>
+
+        <div id="trackReviewPrompt" style="display:none; margin-top:20px; text-align:center;">
+          <button class="btn btn-primary" id="openReviewModalBtn">★ Write a Product Review</button>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -315,9 +400,58 @@
   </div>
 </div>
 
+<!-- REVIEW SUBMISSION MODAL -->
+<div class="overlay" id="reviewModalOverlay">
+  <div class="modal" style="max-width:540px">
+    <button class="modal-close" id="closeReviewModal" aria-label="Close Review Modal">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+    <div style="padding:24px">
+      <h3 style="margin-bottom:6px; font-family:var(--serif);">Write a Product Review</h3>
+      <p style="font-size:.85rem; opacity:.75; margin-bottom:16px;">Only verified purchasers of delivered orders can post a review.</p>
+      
+      <form id="reviewForm">
+        <div class="form-group" style="margin-bottom:12px">
+          <label style="font-size:.8rem; font-weight:600; display:block; margin-bottom:4px">Order ID *</label>
+          <input id="revOrderId" placeholder="e.g. BA-123456" required style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px">
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label style="font-size:.8rem; font-weight:600; display:block; margin-bottom:4px">Mobile Number *</label>
+          <input id="revMobile" type="tel" placeholder="Enter Mobile Number" required style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px">
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label style="font-size:.8rem; font-weight:600; display:block; margin-bottom:4px">Select Product *</label>
+          <select id="revProductSelect" required style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px">
+            <option value="">Select Item from Order</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label style="font-size:.8rem; font-weight:600; display:block; margin-bottom:4px">Your Name *</label>
+          <input id="revCustName" placeholder="Your Name" required style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px">
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label style="font-size:.8rem; font-weight:600; display:block; margin-bottom:4px">Rating (1 to 5 Stars) *</label>
+          <select id="revRating" required style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px">
+            <option value="5">★★★★★ (5 - Excellent)</option>
+            <option value="4">★★★★☆ (4 - Very Good)</option>
+            <option value="3">★★★☆☆ (3 - Good)</option>
+            <option value="2">★★☆☆☆ (2 - Fair)</option>
+            <option value="1">★☆☆☆☆ (1 - Poor)</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label style="font-size:.8rem; font-weight:600; display:block; margin-bottom:4px">Review Details *</label>
+          <textarea id="revComment" rows="3" placeholder="Describe your experience with this item..." required style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="submitReviewBtn">Submit Verified Review</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<script type="module" src="js/app.js?v=6.1"></script>
+<script type="module" src="js/app.js?v=7.0"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
