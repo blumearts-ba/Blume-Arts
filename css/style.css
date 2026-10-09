@@ -308,6 +308,17 @@ footer li a:hover{opacity:1; color:var(--gold);}
 
 .rating-badge{display:inline-flex; align-items:center; gap:4px; background:#fff8e6; color:#b7791f; font-size:.72rem; font-weight:600; padding:2px 8px; border-radius:12px; margin-top:4px;}
 
+/* Gallery Dots & Thumbnails */
+.dot-node{width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.6); cursor:pointer; transition:.2s;}
+.dot-node.active{background:var(--rose-deep); width:18px; border-radius:10px;}
+.thumb-item{width:54px; height:54px; border-radius:10px; object-fit:cover; border:2px solid transparent; cursor:pointer; opacity:.6; transition:.2s;}
+.thumb-item.active,.thumb-item:hover{border-color:var(--rose-deep); opacity:1;}
+
+/* Seller Messages */
+.seller-msg-card{background:var(--white); padding:10px 14px; border-radius:12px; border-left:4px solid var(--rose-deep); font-size:.82rem; box-shadow:var(--shadow-sm);}
+.seller-msg-text{color:var(--brown); font-weight:500; line-height:1.4;}
+.seller-msg-time{font-size:.72rem; opacity:.6; margin-top:4px;}
+
 @media (max-width:600px){
   .track-form{grid-template-columns:1fr; gap:10px;}
   .timeline-stepper{flex-wrap:wrap; gap:10px; justify-content:center;}
