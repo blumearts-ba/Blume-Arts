@@ -7,10 +7,10 @@
 <meta name="description" content="Handmade pipe cleaner flowers and artistic creations, crafted with love by Blume Arts.">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#c98a94">
-<link rel="stylesheet" href="css/style.css?v=4.0">
+<link rel="stylesheet" href="css/style.css?v=9.0">
 </head>
 <body>
-
+  
 <!-- HEADER -->
 <header>
   <nav class="nav">
@@ -24,8 +24,12 @@
       <li><a href="#track-order">Track Order</a></li>
       <li><a href="#about">About</a></li>
       <li><a href="#contact">Contact</a></li>
+      <li><a href="#" id="navSavedDetails">Saved Details</a></li>
     </ul>
     <div class="nav-actions">
+      <button class="icon-btn" id="profileToggle" aria-label="Customer Profile" title="Saved Customer Details">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      </button>
       <button class="icon-btn" id="searchToggle" aria-label="Search">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
       </button>
@@ -37,7 +41,7 @@
     </div>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
-    <a href="#home">Home</a><a href="#shop">Shop</a><a href="#track-order">Track Order</a><a href="#about">About</a><a href="#contact">Contact</a>
+    <a href="#home">Home</a><a href="#shop">Shop</a><a href="#track-order">Track Order</a><a href="#about">About</a><a href="#contact">Contact</a><a href="#" id="mobileSavedDetails">Saved Customer Details</a>
   </div>
 </header>
 
@@ -138,11 +142,28 @@
         <button type="submit" class="btn btn-primary" id="trackSubmitBtn">Track Order</button>
       </form>
 
+      <div class="saved-details-banner" id="trackSavedDetailsBanner">
+        <div class="banner-content">
+          <span class="banner-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+          </span>
+          <div>
+            <h4>Fast 1-Click Ordering</h4>
+            <p>Save your delivery details securely once and breeze through checkout every time.</p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" id="bannerManageDetailsBtn">Save / Access Details</button>
+      </div>
+
       <div id="trackResultWrap" class="track-result-wrap" style="display:none">
         <div class="track-header-banner">
           <div>
             <span class="track-order-num" id="trackDisplayOrderId">Order #</span>
             <div class="track-order-date" id="trackDisplayDate">Placed on ...</div>
+            <div class="track-payment-info" id="trackPaymentInfo" style="margin-top:6px; font-size:.8rem; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <span class="payment-badge" id="trackPaymentMethodBadge">Cash on Delivery</span>
+              <span class="payment-badge" id="trackPaymentStatusBadge">Pending Verification</span>
+            </div>
           </div>
           <span class="status-pill-badge" id="trackStatusBadge">Order Placed</span>
         </div>
@@ -238,8 +259,8 @@
       </div>
     </div>
     <div class="contact-actions">
-      <a href="#" id="callBtn" class="btn btn-outline btn-sm">Call Us</a>
-      <a href="#" id="emailBtn" class="btn btn-outline btn-sm">Email Us</a>
+      <a href="#" id="callBtn" class="btn btn-outline btn-sm">Call</a>
+      <a href="#" id="emailBtn" class="btn btn-outline btn-sm">Email</a>
       <a href="#" id="instaBtn" class="btn btn-outline btn-sm" target="_blank" rel="noopener">Instagram</a>
       <a href="#" id="waBtn" class="btn btn-primary btn-sm" target="_blank" rel="noopener">Chat on WhatsApp</a>
     </div>
@@ -366,11 +387,94 @@
         <div id="checkoutOrderLines"></div>
       </div>
       <div class="checkout-step" data-step="2">
-        <h3 style="margin-bottom:16px">Customer Details</h3>
-        <div class="form-row"><div class="form-group"><label>Full Name *</label><input id="custName"></div>
-        <div class="form-group"><label>Mobile Number *</label><input id="custMobile" type="tel"></div></div>
-        <div class="form-row"><div class="form-group"><label>WhatsApp Number *</label><input id="custWhatsapp" type="tel"></div>
-        <div class="form-group"><label>Email</label><input id="custEmail" type="email"></div></div>
+        <h3 style="margin-bottom:12px">Customer Details</h3>
+        
+        <!-- Dual choice pills -->
+        <div class="checkout-choice-bar" style="display:flex; gap:10px; margin-bottom:16px;">
+          <button type="button" class="checkout-choice-btn active" id="btnChoiceSaved" style="flex:1; padding:9px 12px; border-radius:30px; border:1.5px solid var(--dusty-rose); font-size:.82rem; font-weight:600; cursor:pointer; background:var(--dusty-rose); color:#fff; transition:.25s;">Use Saved Details</button>
+          <button type="button" class="checkout-choice-btn" id="btnChoiceManual" style="flex:1; padding:9px 12px; border-radius:30px; border:1.5px solid var(--beige); font-size:.82rem; font-weight:600; cursor:pointer; background:var(--white); color:var(--brown); transition:.25s;">Enter Manually (Guest)</button>
+        </div>
+
+        <!-- Saved Details View -->
+        <div id="viewSavedDetails" style="margin-bottom:12px;">
+          <div id="savedAuthPromptBox" style="background:var(--cream); padding:16px; border-radius:14px; border:1px solid var(--beige); margin-bottom:14px;">
+            <p style="font-size:.82rem; margin-bottom:10px; color:var(--brown); font-weight:500;">Enter your Mobile Number & Security PIN to load your saved delivery profile:</p>
+            <div class="form-row">
+              <div class="form-group"><label>Mobile Number *</label><input id="coAuthMobile" type="tel" placeholder="10-digit mobile number"></div>
+              <div class="form-group">
+                <label>Security PIN (4-6 digits) *</label>
+                <div style="position:relative;">
+                  <input id="coAuthPin" type="password" maxlength="6" placeholder="Enter PIN" style="padding-right:36px;">
+                  <button type="button" class="pin-toggle-btn" data-target="coAuthPin" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); opacity:.6; cursor:pointer; padding:2px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <button type="button" class="btn btn-primary btn-sm" id="btnCoUnlockSaved">Unlock & Load Details</button>
+              <a href="#" id="coForgotPinHelp" style="font-size:.76rem; color:var(--rose-deep); text-decoration:underline;">Need help or new PIN?</a>
+            </div>
+          </div>
+
+          <div id="savedLoggedInCard" style="display:none; background:#e8f4ec; padding:12px 16px; border-radius:12px; border:1px solid #c2e2cc; margin-bottom:14px; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="font-size:.75rem; font-weight:600; color:#2e6f40; text-transform:uppercase; letter-spacing:.5px; display:block;">Verified Customer</span>
+              <strong id="savedProfileGreeting" style="font-size:.9rem; color:#1b4d29;">Welcome</strong>
+            </div>
+            <button type="button" id="btnCoSignOut" style="font-size:.76rem; color:#b91c1c; text-decoration:underline; font-weight:500;">Switch / Sign Out</button>
+          </div>
+        </div>
+
+        <!-- Details Form (Used for both Manual and display of loaded details) -->
+        <div id="viewManualDetails">
+          <div class="form-row">
+            <div class="form-group"><label>Full Name *</label><input id="custName" placeholder="e.g. Priyanga M"></div>
+            <div class="form-group"><label>Mobile Number *</label><input id="custMobile" type="tel" placeholder="10-digit mobile number"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label style="margin-bottom:0">WhatsApp Number *</label>
+                <label style="font-size:.72rem; display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; opacity:.85;">
+                  <input type="checkbox" id="chkSameAsMobile" style="width:auto; margin:0;"> Same as Mobile
+                </label>
+              </div>
+              <input id="custWhatsapp" type="tel" placeholder="WhatsApp number">
+            </div>
+            <div class="form-group"><label>Email (Optional)</label><input id="custEmail" type="email" placeholder="name@example.com"></div>
+          </div>
+
+          <!-- Guest option to save profile -->
+          <div id="guestSaveProfileWrap" style="background:var(--cream); padding:14px; border-radius:12px; border:1px solid var(--beige); margin-top:8px;">
+            <label style="font-size:.82rem; display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:var(--brown);">
+              <input type="checkbox" id="chkGuestSaveProfile" style="width:auto; margin:0;"> Save these details for fast 1-click future orders
+            </label>
+            <div id="guestPinFields" style="display:none; margin-top:10px; border-top:1px dashed var(--beige); padding-top:10px;">
+              <p style="font-size:.76rem; opacity:.8; margin-bottom:8px;">Set a 4 to 6 digit security PIN so you can access your saved address next time:</p>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Create PIN (4-6 digits) *</label>
+                  <div style="position:relative;">
+                    <input id="guestCreatePin" type="password" maxlength="6" placeholder="4-6 digits" style="padding-right:36px;">
+                    <button type="button" class="pin-toggle-btn" data-target="guestCreatePin" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); opacity:.6; cursor:pointer; padding:2px;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Confirm PIN *</label>
+                  <div style="position:relative;">
+                    <input id="guestConfirmPin" type="password" maxlength="6" placeholder="Re-enter PIN" style="padding-right:36px;">
+                    <button type="button" class="pin-toggle-btn" data-target="guestConfirmPin" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); opacity:.6; cursor:pointer; padding:2px;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="checkout-step" data-step="3">
         <h3 style="margin-bottom:16px">Delivery Address</h3>
@@ -380,15 +484,75 @@
         <div class="form-group"><label>City *</label><input id="addrCity"></div></div>
         <div class="form-row"><div class="form-group"><label>District *</label><input id="addrDistrict"></div>
         <div class="form-group"><label>State *</label><input id="addrState"></div></div>
-        <div class="form-row full"><div class="form-group"><label>Pincode *</label><input id="addrPincode"></div></div>
+        <div class="form-row full"><div class="form-group"><label>Pincode *</label><input id="addrPincode" maxlength="6"></div></div>
       </div>
       <div class="checkout-step" data-step="4">
         <h3 style="margin-bottom:16px">Special Instructions</h3>
         <div class="form-group"><label>Any special instructions? (optional)</label><textarea id="specialNotes" rows="5"></textarea></div>
       </div>
       <div class="checkout-step" data-step="5">
-        <h3 style="margin-bottom:16px">Final Order Summary</h3>
+        <h3 style="margin-bottom:14px">Final Order Summary</h3>
         <div id="finalSummary"></div>
+
+        <div class="payment-selection-block" style="margin-top:20px; border-top:1px solid var(--beige); padding-top:16px;">
+          <h4 style="font-size:.88rem; color:var(--rose-deep); text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; font-weight:600;">Choose Payment Method</h4>
+          
+          <div class="payment-options-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+            <label class="payment-option-card active" id="cardMethodCod" style="border:1.5px solid var(--dusty-rose); border-radius:12px; padding:12px; cursor:pointer; background:var(--ivory); display:flex; flex-direction:column; gap:4px; position:relative;">
+              <input type="radio" name="paymentMethodRadio" value="COD" checked style="position:absolute; top:12px; right:12px;">
+              <span style="font-weight:600; font-size:.85rem; color:var(--brown);">Cash on Delivery</span>
+              <span style="font-size:.72rem; opacity:.75;">Pay in cash when order arrives</span>
+            </label>
+            <label class="payment-option-card" id="cardMethodUpi" style="border:1.5px solid var(--beige); border-radius:12px; padding:12px; cursor:pointer; background:var(--white); display:flex; flex-direction:column; gap:4px; position:relative;">
+              <input type="radio" name="paymentMethodRadio" value="UPI" style="position:absolute; top:12px; right:12px;">
+              <span style="font-weight:600; font-size:.85rem; color:var(--brown);">Online Payment (UPI)</span>
+              <span style="font-size:.72rem; opacity:.75;">GPay, PhonePe, Paytm, BHIM</span>
+            </label>
+          </div>
+
+          <!-- Online UPI Interactive Panel -->
+          <div id="upiPaymentPanel" style="display:none; background:var(--cream); border:1px solid var(--beige); border-radius:14px; padding:16px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <span style="font-size:.76rem; font-weight:600; color:var(--rose-deep); text-transform:uppercase; letter-spacing:.5px;">Merchant UPI Details</span>
+              <span class="payment-badge payment-pending" style="font-size:.72rem;">Verification Pending</span>
+            </div>
+            
+            <div style="background:var(--white); border:1px solid var(--beige); border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <div>
+                <span style="font-size:.7rem; opacity:.6; display:block;">UPI ID / VPA</span>
+                <strong id="displayUpiId" style="font-size:.9rem; color:var(--brown); font-family:monospace;">mohanraj88978@okaxis</strong>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="btnCopyUpiId" style="padding:6px 12px; font-size:.75rem;">Copy UPI ID</button>
+            </div>
+
+            <div style="margin-bottom:14px; text-align:center;">
+              <a href="#" id="btnLaunchUpiApp" class="btn btn-primary btn-block" style="font-size:.85rem; padding:10px; text-decoration:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Pay via Installed UPI App
+              </a>
+              <span style="display:block; font-size:.72rem; opacity:.7; margin-top:6px;">Direct UPI launch opens installed payment apps on mobile devices.</span>
+            </div>
+
+            <div class="form-group" style="margin-bottom:12px;">
+              <label style="font-size:.78rem; font-weight:600;">UPI Reference / UTR Number (Optional)</label>
+              <input id="upiUtrNumber" placeholder="e.g. 12-digit UTR from GPay / PhonePe" style="font-size:.85rem;">
+            </div>
+
+            <div class="form-group" style="margin-bottom:10px;">
+              <label style="font-size:.78rem; font-weight:600;">Upload Payment Screenshot (Optional Evidence)</label>
+              <input type="file" id="upiScreenshotFile" accept="image/jpeg,image/png,image/webp" style="font-size:.8rem; background:var(--white);">
+              <span style="display:block; font-size:.72rem; opacity:.7; margin-top:4px;">Accepts JPG, PNG, WebP (compressed locally). Screenshot is stored as evidence awaiting verification.</span>
+              <div id="upiScreenshotPreviewWrap" style="display:none; margin-top:8px; position:relative; width:100px; height:100px; border-radius:8px; overflow:hidden; border:1px solid var(--beige);">
+                <img id="upiScreenshotPreview" src="" alt="Screenshot Preview" style="width:100%; height:100%; object-fit:cover;">
+                <button type="button" id="btnRemoveScreenshot" style="position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; border-radius:50%; width:20px; height:20px; font-size:.7rem; cursor:pointer;">✕</button>
+              </div>
+            </div>
+
+            <div style="background:#fff8e6; border:1px solid #f6e05e; border-radius:10px; padding:10px 12px; font-size:.74rem; color:#744210; line-height:1.4;">
+              <strong>Honest Payment Policy:</strong> Online orders are created with status <em>"Payment Pending Verification"</em>. Our team confirms bank receipt before final dispatch.
+            </div>
+          </div>
+        </div>
       </div>
       <div class="checkout-nav">
         <button class="btn btn-outline" id="backStep">Back</button>
@@ -409,10 +573,128 @@
       <p>Your order details have been prepared in WhatsApp.</p>
       <p>Please press Send in WhatsApp to confirm your order.</p>
       <div class="order-id-tag" id="confirmOrderId">BA-00001</div>
+      <div id="confirmPaymentBadges" style="margin-bottom:16px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+        <span class="payment-badge" id="confirmPaymentMethodBadge">Cash on Delivery</span>
+        <span class="payment-badge" id="confirmPaymentStatusBadge">Pending</span>
+      </div>
       <div class="confirm-actions">
         <button class="btn btn-primary" id="openWhatsappBtn">Open WhatsApp</button>
         <button class="btn btn-outline" id="continueShoppingBtn">Continue Shopping</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- SAVED CUSTOMER DETAILS / PROFILE MODAL -->
+<div class="overlay" id="customerProfileModalOverlay">
+  <div class="modal" style="max-width:600px;">
+    <button class="modal-close" id="closeCustomerProfile" aria-label="Close Profile">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+    <div style="padding:26px 22px;">
+      <div style="text-align:center; margin-bottom:18px;">
+        <span class="eyebrow" style="font-size:1rem;">My Blume Account</span>
+        <h3 style="font-family:var(--serif); font-size:1.35rem; margin-bottom:4px;">Saved Delivery Details</h3>
+        <p style="font-size:.82rem; opacity:.75;">Save your address once for 1-click quick checkout on all your orders.</p>
+      </div>
+
+      <!-- Segmented Tab Controls (when not logged in) -->
+      <div class="profile-tabs-bar" id="profileTabsBar" style="display:flex; gap:8px; margin-bottom:18px; border-bottom:1px solid var(--beige); padding-bottom:10px;">
+        <button type="button" class="profile-tab-btn active" id="tabBtnAccessProfile" style="flex:1; padding:8px 12px; border-radius:30px; font-size:.82rem; font-weight:600; cursor:pointer; background:var(--dusty-rose); color:#fff; border:none; transition:.25s;">Access Saved Details</button>
+        <button type="button" class="profile-tab-btn" id="tabBtnCreateProfile" style="flex:1; padding:8px 12px; border-radius:30px; font-size:.82rem; font-weight:600; cursor:pointer; background:var(--ivory); color:var(--brown); border:1px solid var(--beige); transition:.25s;">Save New Details</button>
+      </div>
+
+      <!-- Status / Alert message -->
+      <div id="profileAlertMsg" style="display:none; padding:10px 14px; border-radius:10px; font-size:.82rem; margin-bottom:14px;"></div>
+
+      <!-- TAB 1: ACCESS SAVED DETAILS (Phone + PIN Sign In) -->
+      <form id="formAccessProfile" style="display:block;">
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>Mobile Number *</label>
+          <input id="accMobile" type="tel" placeholder="Enter your 10-digit registered mobile" required>
+        </div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>Security PIN (4-6 digits) *</label>
+          <div style="position:relative;">
+            <input id="accPin" type="password" maxlength="6" placeholder="Enter PIN" required style="padding-right:38px;">
+            <button type="button" class="pin-toggle-btn" data-target="accPin" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); opacity:.6; cursor:pointer; padding:2px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSubmitAccess">Unlock My Details</button>
+      </form>
+
+      <!-- TAB 2 / LOGGED IN: PROFILE FORM (View / Edit / Save) -->
+      <form id="formSaveProfile" style="display:none;">
+        <div id="profileLoggedInHeader" style="display:none; justify-content:space-between; align-items:center; background:#e8f4ec; padding:10px 14px; border-radius:10px; border:1px solid #c2e2cc; margin-bottom:14px;">
+          <span style="font-size:.82rem; color:#1b4d29; font-weight:600;" id="profileSessionText">Active Profile</span>
+          <button type="button" id="btnProfileSignOut" style="font-size:.76rem; color:#b91c1c; text-decoration:underline; font-weight:600; cursor:pointer;">Log Out</button>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group"><label>Full Name *</label><input id="pfName" placeholder="Full name" required></div>
+          <div class="form-group"><label>Mobile Number *</label><input id="pfMobile" type="tel" placeholder="10-digit mobile" required></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <label style="margin-bottom:0">WhatsApp Number *</label>
+              <label style="font-size:.72rem; display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; opacity:.85;">
+                <input type="checkbox" id="chkPfSameAsMobile" style="width:auto; margin:0;"> Same as Mobile
+              </label>
+            </div>
+            <input id="pfWhatsapp" type="tel" placeholder="WhatsApp number" required>
+          </div>
+          <div class="form-group"><label>Email (Optional)</label><input id="pfEmail" type="email" placeholder="Email address"></div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group"><label>House / Door No *</label><input id="pfHouse" placeholder="Door No" required></div>
+          <div class="form-group"><label>Street *</label><input id="pfStreet" placeholder="Street Name" required></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Area *</label><input id="pfArea" placeholder="Area / Locality" required></div>
+          <div class="form-group"><label>City *</label><input id="pfCity" placeholder="City" required></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>District *</label><input id="pfDistrict" placeholder="District" required></div>
+          <div class="form-group"><label>State *</label><input id="pfState" placeholder="State" required></div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group"><label>Pincode *</label><input id="pfPincode" maxlength="6" placeholder="6-digit pincode" required></div>
+        </div>
+
+        <!-- Security PIN creation / update section -->
+        <div id="pfPinSection" style="margin-top:10px; background:var(--cream); padding:12px; border-radius:10px; border:1px solid var(--beige);">
+          <span style="font-size:.75rem; font-weight:600; color:var(--rose-deep); text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:8px;" id="pfPinHeader">Create Security PIN (4-6 digits)</span>
+          <div class="form-row">
+            <div class="form-group">
+              <label id="pfPinLabel">Security PIN *</label>
+              <div style="position:relative;">
+                <input id="pfPin" type="password" maxlength="6" placeholder="4-6 digits" style="padding-right:38px;">
+                <button type="button" class="pin-toggle-btn" data-target="pfPin" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); opacity:.6; cursor:pointer; padding:2px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Confirm PIN *</label>
+              <div style="position:relative;">
+                <input id="pfConfirmPin" type="password" maxlength="6" placeholder="Confirm PIN" style="padding-right:38px;">
+                <button type="button" class="pin-toggle-btn" data-target="pfConfirmPin" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); opacity:.6; cursor:pointer; padding:2px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button type="button" class="btn btn-outline" id="btnCancelProfile" style="flex:1; justify-content:center;">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitSaveProfile" style="flex:2; justify-content:center;">Save Details</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -468,7 +750,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="js/app.js?v=8.1"></script>
+<script type="module" src="js/app.js?v=9.0"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
