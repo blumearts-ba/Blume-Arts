@@ -141,7 +141,8 @@ function loadProducts() {
         name: removeEmojis(data.name),
         description: removeEmojis(data.description),
         price: Number(data.price || 0),
-        deliveryCharge: isNaN(deliveryCharge) ? 0 : deliveryCharge
+        deliveryCharge: isNaN(deliveryCharge) ? 0 : deliveryCharge,
+        unlimitedStock: Boolean(data.unlimitedStock)
       });
     });
 
@@ -217,8 +218,9 @@ function renderProducts() {
   grid.innerHTML = list.map((p, i) => {
     const imageSource = getProductImage(p);
     const cleanName = removeEmojis(p.name);
+    const isUnlimited = Boolean(p.unlimitedStock);
     const stockNum = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
-    const isOut = stockNum <= 0;
+    const isOut = !isUnlimited && stockNum <= 0;
     const ratingHtml = (p.reviewCount && p.reviewCount > 0)
       ? `<div class="rating-badge">★ ${(Number(p.avgRating) || 5).toFixed(1)} (${p.reviewCount})</div>`
       : "";
@@ -235,7 +237,7 @@ function renderProducts() {
           <div class="desc">${(removeEmojis(p.description) || "").slice(0, 50)}</div>
           <div class="price-row">
             <span class="price">${money(p.price)}</span>
-            <span class="stock-tag ${isOut ? "out" : ""}">${isOut ? "Out of Stock" : "In Stock (" + stockNum + ")"}</span>
+            <span class="stock-tag ${isOut ? "out" : ""}">${isOut ? "Out of Stock" : (isUnlimited ? "In Stock" : "In Stock (" + stockNum + ")")}</span>
           </div>
           <div class="card-actions">
             ${isOut ? `
@@ -269,8 +271,9 @@ function renderProducts() {
     e.stopPropagation();
     const p = PRODUCTS.find(x => x.id === btn.dataset.id);
     if (p) {
+      const isUnlimited = Boolean(p.unlimitedStock);
       const stockNum = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
-      if (stockNum <= 0) {
+      if (!isUnlimited && stockNum <= 0) {
         toast("Sorry, this item is out of stock.");
         return;
       }
@@ -373,9 +376,10 @@ function openProductModal(id) {
   activeProduct = PRODUCTS.find(p => p.id === id);
   if (!activeProduct) return;
 
+  const isUnlimited = Boolean(activeProduct.unlimitedStock);
   const stockNum = Number(activeProduct.stockQuantity !== undefined ? activeProduct.stockQuantity : (activeProduct.stock || 0));
 
-  pdQty = stockNum > 0 ? 1 : 0;
+  pdQty = (isUnlimited || stockNum > 0) ? 1 : 0;
   pdSelectedColor = (activeProduct.colors || [])[0] || null;
 
   // Setup Multi-Image Gallery
@@ -396,7 +400,7 @@ function openProductModal(id) {
   const minusBtn = $("#pdMinus");
   const plusBtn = $("#pdPlus");
 
-  if (stockNum <= 0) {
+  if (!isUnlimited && stockNum <= 0) {
     if (stockBadgeWrap) {
       stockBadgeWrap.innerHTML = `<span class="pill no">Out of Stock (0)</span>`;
     }
@@ -414,7 +418,9 @@ function openProductModal(id) {
     if (plusBtn) plusBtn.disabled = true;
   } else {
     if (stockBadgeWrap) {
-      if (stockNum <= 3) {
+      if (isUnlimited) {
+        stockBadgeWrap.innerHTML = `<span class="pill yes" style="background:#e6f4ea;color:#137333;border:1px solid #ceead6">In Stock</span>`;
+      } else if (stockNum <= 3) {
         stockBadgeWrap.innerHTML = `<span class="pill warning" style="background:#fff5eb;color:#b7791f;border:1px solid #fbd38d">Low Stock (${stockNum} left)</span>`;
       } else {
         stockBadgeWrap.innerHTML = `<span class="pill yes">In Stock (${stockNum})</span>`;
@@ -463,17 +469,19 @@ if ($("#closeProduct")) $("#closeProduct").addEventListener("click", () => $("#p
 if ($("#productOverlay")) $("#productOverlay").addEventListener("click", (e) => { if (e.target.id === "productOverlay") e.currentTarget.classList.remove("open"); });
 
 if ($("#pdMinus")) $("#pdMinus").addEventListener("click", () => {
+  const isUnlimited = activeProduct ? Boolean(activeProduct.unlimitedStock) : false;
   const stockNum = activeProduct ? Number(activeProduct.stockQuantity !== undefined ? activeProduct.stockQuantity : (activeProduct.stock || 0)) : 0;
-  if (stockNum <= 0) return;
+  if (!isUnlimited && stockNum <= 0) return;
   if (pdQty > 1) pdQty--;
   $("#pdQty").textContent = pdQty;
   updatePdTotal();
 });
 
 if ($("#pdPlus")) $("#pdPlus").addEventListener("click", () => {
+  const isUnlimited = activeProduct ? Boolean(activeProduct.unlimitedStock) : false;
   const stockNum = activeProduct ? Number(activeProduct.stockQuantity !== undefined ? activeProduct.stockQuantity : (activeProduct.stock || 0)) : 0;
-  if (stockNum <= 0) return;
-  if (pdQty >= stockNum) {
+  if (!isUnlimited && stockNum <= 0) return;
+  if (!isUnlimited && pdQty >= stockNum) {
     toast(`Only ${stockNum} item(s) available in stock.`);
     return;
   }
@@ -484,8 +492,9 @@ if ($("#pdPlus")) $("#pdPlus").addEventListener("click", () => {
 
 if ($("#pdAddCart")) $("#pdAddCart").addEventListener("click", () => {
   if (!activeProduct) return;
+  const isUnlimited = Boolean(activeProduct.unlimitedStock);
   const stockNum = Number(activeProduct.stockQuantity !== undefined ? activeProduct.stockQuantity : (activeProduct.stock || 0));
-  if (stockNum <= 0) {
+  if (!isUnlimited && stockNum <= 0) {
     toast("Sorry, this item is out of stock.");
     return;
   }
@@ -498,8 +507,9 @@ if ($("#pdAddCart")) $("#pdAddCart").addEventListener("click", () => {
 
 if ($("#pdBuyNow")) $("#pdBuyNow").addEventListener("click", () => {
   if (!activeProduct) return;
+  const isUnlimited = Boolean(activeProduct.unlimitedStock);
   const stockNum = Number(activeProduct.stockQuantity !== undefined ? activeProduct.stockQuantity : (activeProduct.stock || 0));
-  if (stockNum <= 0) {
+  if (!isUnlimited && stockNum <= 0) {
     toast("Sorry, this item is out of stock.");
     return;
   }
@@ -519,8 +529,9 @@ function saveCart() { localStorage.setItem("blume_cart", JSON.stringify(CART)); 
 
 function addToCart(product, qty, color) {
   if (!product) return false;
+  const isUnlimited = Boolean(product.unlimitedStock);
   const stockNum = Number(product.stockQuantity !== undefined ? product.stockQuantity : (product.stock || 0));
-  if (stockNum <= 0) {
+  if (!isUnlimited && stockNum <= 0) {
     toast("Sorry, this item is out of stock.");
     return false;
   }
@@ -529,7 +540,7 @@ function addToCart(product, qty, color) {
   const existing = CART.find(i => i.key === key);
   const currentInCart = existing ? existing.qty : 0;
 
-  if (currentInCart + qty > stockNum) {
+  if (!isUnlimited && currentInCart + qty > stockNum) {
     toast(`Cannot add. Maximum available stock is ${stockNum}.`);
     return false;
   }
@@ -645,8 +656,9 @@ function changeQty(key, delta) {
   if (!item) return;
   if (delta > 0) {
     const p = PRODUCTS.find(x => x.id === item.id);
+    const isUnlimited = p ? Boolean(p.unlimitedStock) : false;
     const stockNum = p ? Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0)) : 9999;
-    if (item.qty + delta > stockNum) {
+    if (!isUnlimited && item.qty + delta > stockNum) {
       toast(`Maximum available stock reached (${stockNum}).`);
       return;
     }
@@ -710,6 +722,26 @@ function getCheckoutTotal() { return getCheckoutSubtotal() + getCheckoutDelivery
 function startCheckout(mode) {
   checkoutMode = mode;
   if (mode === "cart" && !CART.length) { toast("Your cart is empty"); return; }
+
+  const items = getCheckoutItems();
+  for (const item of items) {
+    const p = PRODUCTS.find(x => x.id === item.id);
+    if (p) {
+      const isUnlimited = Boolean(p.unlimitedStock);
+      const stockNum = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
+      if (!isUnlimited) {
+        if (stockNum <= 0) {
+          toast(`"${item.name}" is currently out of stock.`);
+          return;
+        }
+        if (item.qty > stockNum) {
+          toast(`Cannot checkout. Only ${stockNum} available for "${item.name}".`);
+          return;
+        }
+      }
+    }
+  }
+
   currentStep = 1;
   showStep(1);
   renderOrderLines();
@@ -1496,11 +1528,14 @@ async function submitOrder() {
           throw new Error(`Product "${item.name}" is no longer available.`);
         }
         const pData = pSnap.data();
-        const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : (pData.stock || 0));
-        if (currentStock < item.qty) {
-          throw new Error(`Insufficient stock for "${item.name}". Only ${currentStock} item(s) left.`);
+        const isUnlimited = Boolean(pData.unlimitedStock);
+        if (!isUnlimited) {
+          const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : (pData.stock || 0));
+          if (currentStock < item.qty) {
+            throw new Error(`Insufficient stock for "${item.name}". Only ${currentStock} item(s) left.`);
+          }
+          productUpdates.push({ ref: pRef, newStock: currentStock - item.qty });
         }
-        productUpdates.push({ ref: pRef, newStock: currentStock - item.qty });
       }
 
       for (const update of productUpdates) {
