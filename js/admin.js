@@ -12,6 +12,16 @@ let uploadedImageBase64 = "";
 
 let currentStoredPinHash = null;
 
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // ============================================================
 // 1. PIN CRYPTO HASHING & AUTHENTICATION (PURE PIN ACCESS)
 // ============================================================
@@ -759,12 +769,12 @@ function openOrderModal(id) {
     });
   }
 
-  // Real-Time listener for seller messages on this order
+  // Real-Time listener for seller messages on this order (with Edit & Delete support)
   const msgList = $("#adminSellerMessagesList");
   if (msgList) {
     onSnapshot(collection(db, "orders", o.id, "sellerMessages"), (snap) => {
       if (snap.empty) {
-        msgList.innerHTML = `<p style="opacity:.6; font-style:italic;">No messages sent yet.</p>`;
+        msgList.innerHTML = `<p style="opacity:.6; font-style:italic; padding:6px 0;">No messages sent yet.</p>`;
         return;
       }
       const docs = [];
@@ -777,26 +787,138 @@ function openOrderModal(id) {
 
       msgList.innerHTML = docs.map(data => {
         const timeStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString() : (data.timestamp ? new Date(data.timestamp).toLocaleString() : "");
-        return `<div style="background:var(--cream); padding:6px 10px; border-radius:6px;"><strong>Seller:</strong> ${data.messageText} <span style="opacity:.6; font-size:.7rem; float:right;">${timeStr}</span></div>`;
+        const safeText = escapeHtml(data.messageText);
+        return `
+          <div class="seller-msg-card-item" id="msgCard_${data.id}" style="background:var(--cream); padding:8px 10px; border-radius:8px; border:1px solid var(--beige);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+              <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <strong style="color:var(--rose-deep); font-size:.78rem;">Seller:</strong>
+                  <span style="opacity:.6; font-size:.68rem;">${timeStr}</span>
+                </div>
+                <div class="msg-display-text" id="msgDisplay_${data.id}" style="font-size:.84rem; color:var(--brown); margin-top:2px; word-break:break-word;">
+                  ${safeText}
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                <button type="button" class="btn-edit-msg" data-id="${data.id}" title="Edit Message" style="background:none; border:none; cursor:pointer; padding:4px; color:var(--dusty-rose); display:inline-flex; align-items:center;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+                <button type="button" class="btn-delete-msg" data-id="${data.id}" title="Delete Message" style="background:none; border:none; cursor:pointer; padding:4px; color:#c0524f; display:inline-flex; align-items:center;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Inline Edit Form -->
+            <div class="msg-edit-panel" id="msgEditPanel_${data.id}" style="display:none; margin-top:8px; padding-top:6px; border-top:1px dashed var(--beige);">
+              <div style="display:flex; gap:6px;">
+                <input type="text" class="msg-edit-input" id="msgInput_${data.id}" value="${safeText}" style="flex:1; padding:6px 10px; font-size:.8rem; border:1px solid var(--beige); border-radius:6px; background:#fff;">
+                <button type="button" class="btn sm btn-save-msg" data-id="${data.id}" style="padding:4px 10px; font-size:.75rem;">Save</button>
+                <button type="button" class="btn outline sm btn-cancel-msg" data-id="${data.id}" style="padding:4px 10px; font-size:.75rem;">Cancel</button>
+              </div>
+            </div>
+          </div>
+        `;
       }).join("");
+
+      // Wire up Edit buttons
+      msgList.querySelectorAll(".btn-edit-msg").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = btn.dataset.id;
+          const panel = $(`#msgEditPanel_${id}`);
+          const display = $(`#msgDisplay_${id}`);
+          if (panel) {
+            panel.style.display = "block";
+            const input = $(`#msgInput_${id}`);
+            if (input) input.focus();
+          }
+          if (display) display.style.display = "none";
+        });
+      });
+
+      // Wire up Cancel buttons
+      msgList.querySelectorAll(".btn-cancel-msg").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = btn.dataset.id;
+          const panel = $(`#msgEditPanel_${id}`);
+          const display = $(`#msgDisplay_${id}`);
+          if (panel) panel.style.display = "none";
+          if (display) display.style.display = "block";
+        });
+      });
+
+      // Wire up Save buttons
+      msgList.querySelectorAll(".btn-save-msg").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.id;
+          const input = $(`#msgInput_${id}`);
+          const newText = input ? input.value.trim() : "";
+          if (!newText) {
+            alert("Message text cannot be empty.");
+            return;
+          }
+          btn.disabled = true;
+          btn.textContent = "...";
+          try {
+            await updateDoc(doc(db, "orders", o.id, "sellerMessages", id), {
+              messageText: newText,
+              updatedAt: serverTimestamp()
+            });
+          } catch (err) {
+            alert("Failed to update message: " + err.message);
+            btn.disabled = false;
+            btn.textContent = "Save";
+          }
+        });
+      });
+
+      // Wire up Delete buttons
+      msgList.querySelectorAll(".btn-delete-msg").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.id;
+          if (!confirm("Are you sure you want to delete this message?")) return;
+          btn.disabled = true;
+          try {
+            await deleteDoc(doc(db, "orders", o.id, "sellerMessages", id));
+          } catch (err) {
+            alert("Failed to delete message: " + err.message);
+            btn.disabled = false;
+          }
+        });
+      });
     });
   }
 
+  const sendNewMessage = async () => {
+    const input = $("#adminSellerMsgInput");
+    const sendBtn = $("#sendSellerMsgBtn");
+    const text = input ? input.value.trim() : "";
+    if (!text) return;
+    if (sendBtn) sendBtn.disabled = true;
+    try {
+      await addDoc(collection(db, "orders", o.id, "sellerMessages"), {
+        orderId: o.orderId || o.id,
+        messageText: text,
+        sender: "seller",
+        createdAt: serverTimestamp()
+      });
+      if (input) input.value = "";
+    } catch (err) {
+      alert("Failed to send message: " + err.message);
+    } finally {
+      if (sendBtn) sendBtn.disabled = false;
+    }
+  };
+
   if ($("#sendSellerMsgBtn")) {
-    $("#sendSellerMsgBtn").addEventListener("click", async () => {
-      const input = $("#adminSellerMsgInput");
-      const text = input ? input.value.trim() : "";
-      if (!text) return;
-      try {
-        await addDoc(collection(db, "orders", o.id, "sellerMessages"), {
-          orderId: o.orderId || o.id,
-          messageText: text,
-          sender: "seller",
-          createdAt: serverTimestamp()
-        });
-        input.value = "";
-      } catch (err) {
-        alert("Failed to send message: " + err.message);
+    $("#sendSellerMsgBtn").addEventListener("click", sendNewMessage);
+  }
+  if ($("#adminSellerMsgInput")) {
+    $("#adminSellerMsgInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendNewMessage();
       }
     });
   }
