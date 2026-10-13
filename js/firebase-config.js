@@ -35,4 +35,5 @@ export const DEFAULT_SETTINGS = {
   description: "Handmade pipe cleaner flowers, crafted with love.",
   deliveryInfo: "Delivery details shared after order confirmation on WhatsApp.",
   footerText: "Handmade With Love",
+  upiId: "mohanraj88978@okaxis",
 };
