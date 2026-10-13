@@ -251,7 +251,17 @@
       <div class="form-group full"><label>Product Name *</label><input id="fName"></div>
       <div class="form-group"><label>Price (₹) *</label><input id="fPrice" type="number" min="0"></div>
       <div class="form-group"><label>Delivery Charge (₹)</label><input id="fDeliveryCharge" type="number" min="0" value="0" placeholder="0"></div>
-      <div class="form-group"><label>Stock Quantity</label><input id="fStock" type="number" value="10"></div>
+      <div class="form-group" style="display:flex; flex-direction:column; justify-content:flex-end;">
+        <label style="margin-bottom:6px;">Stock Availability</label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:.85rem; font-weight:600; padding:10px 12px; background:var(--cream); border:1.5px solid var(--beige); border-radius:10px; height:42px; user-select:none;">
+          <input type="checkbox" id="fUnlimitedStock" style="width:18px; height:18px; accent-color:var(--rose-deep); cursor:pointer;">
+          <span>Unlimited Stock</span>
+        </label>
+      </div>
+      <div class="form-group" id="stockQtyGroup">
+        <label for="fStock">Stock Quantity *</label>
+        <input id="fStock" type="number" min="0" step="1" value="10" placeholder="e.g. 10, 25, 100">
+      </div>
       <div class="form-group"><label>Category</label><select id="fCategory"></select></div>
       <div class="form-group"><label>Colors (comma separated)</label><input id="fColors" placeholder="Red, Pink, White"></div>
       <div class="form-group full"><label>Description</label><textarea id="fDescription" rows="3"></textarea></div>
@@ -316,6 +326,6 @@
   <div class="modal" id="orderModalBody"></div>
 </div>
 
-<script type="module" src="js/admin.js?v=9.1"></script>
+<script type="module" src="js/admin.js?v=9.2"></script>
 </body>
 </html>
