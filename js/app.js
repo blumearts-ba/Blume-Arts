@@ -1,8 +1,11 @@
-import { db, DEFAULT_SETTINGS } from "./firebase-config.js";
+import { db, auth, DEFAULT_SETTINGS } from "./firebase-config.js";
 import {
   collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc,
   runTransaction, query, where, getDocs, updateDoc, setDoc, orderBy
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 // ---------- EMOJI SANITIZER FOR ZERO EMOJI COMPLIANCE ----------
 function removeEmojis(str) {
@@ -34,8 +37,63 @@ let checkoutMode = "cart"; // "cart" | "buyNow"
 let buyNowItem = null;
 let lastOrder = null;
 
+let CURRENT_CUSTOMER_PROFILE = null;
+let currentUploadedScreenshotDataUrl = "";
+let selectedPaymentMethod = "COD";
+let checkoutOptionMode = "saved"; // "saved" | "manual"
+
 const $ = (sel) => document.querySelector(sel);
 const money = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
+
+// ---------- CUSTOMER IDENTITY & SECURITY UTILITIES ----------
+async function hashCustomerPin(phone, pin) {
+  const clean = String(phone || "").replace(/\D/g, "");
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`blume_customer_${clean}_salt_${pin}`);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function customerInternalEmail(phone) {
+  const clean = String(phone || "").replace(/\D/g, "");
+  return `cust_${clean}@blumearts.internal`;
+}
+
+function compressImageFileToDataUrl(file, maxWidth = 800, maxHeight = 800, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.match(/^image\/(jpeg|png|webp)$/i)) {
+      return reject(new Error("Please upload a valid image (JPG, PNG, or WebP)."));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read image file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Failed to process image file."));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve(dataUrl);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 // ---------- TOAST ----------
 function toast(msg) {
@@ -679,6 +737,567 @@ function renderOrderLines() {
   $("#checkoutOrderLines").innerHTML = html;
 }
 
+// ============================================================
+// CUSTOMER SAVED DETAILS & AUTHENTICATION
+// ============================================================
+
+function syncProfileStateToUI() {
+  const profile = CURRENT_CUSTOMER_PROFILE;
+
+  // 1. Checkout Step 2 view sync
+  const savedGreeting = $("#savedProfileGreeting");
+  const savedLoggedInCard = $("#savedLoggedInCard");
+  const savedAuthBox = $("#savedAuthPromptBox");
+
+  if (profile) {
+    if (savedGreeting) savedGreeting.textContent = `${profile.fullName || "Valued Customer"} (${profile.mobile || ""})`;
+    if (savedLoggedInCard) savedLoggedInCard.style.display = "flex";
+    if (savedAuthBox) savedAuthBox.style.display = "none";
+
+    // If currently on "saved" choice, prefill checkout inputs
+    if (checkoutOptionMode === "saved") {
+      autofillCheckoutFromProfile(profile);
+    }
+  } else {
+    if (savedLoggedInCard) savedLoggedInCard.style.display = "none";
+    if (savedAuthBox) savedAuthBox.style.display = "block";
+  }
+
+  // 2. Profile modal view sync
+  const sessionText = $("#profileSessionText");
+  const loggedInHeader = $("#profileLoggedInHeader");
+  const formAccess = $("#formAccessProfile");
+  const formSave = $("#formSaveProfile");
+  const tabsBar = $("#profileTabsBar");
+  const pfPinSection = $("#pfPinSection");
+  const pfPinHeader = $("#pfPinHeader");
+
+  if (profile) {
+    if (sessionText) sessionText.textContent = `Signed in: ${profile.fullName || "User"} (${profile.mobile || ""})`;
+    if (loggedInHeader) loggedInHeader.style.display = "flex";
+    if (tabsBar) tabsBar.style.display = "none";
+    if (formAccess) formAccess.style.display = "none";
+    if (formSave) formSave.style.display = "block";
+
+    if ($("#pfName")) $("#pfName").value = profile.fullName || "";
+    if ($("#pfMobile")) $("#pfMobile").value = profile.mobile || "";
+    if ($("#pfWhatsapp")) $("#pfWhatsapp").value = profile.whatsapp || "";
+    if ($("#pfEmail")) $("#pfEmail").value = profile.email || "";
+
+    const a = profile.address || {};
+    if ($("#pfHouse")) $("#pfHouse").value = a.house || "";
+    if ($("#pfStreet")) $("#pfStreet").value = a.street || "";
+    if ($("#pfArea")) $("#pfArea").value = a.area || "";
+    if ($("#pfCity")) $("#pfCity").value = a.city || "";
+    if ($("#pfDistrict")) $("#pfDistrict").value = a.district || "";
+    if ($("#pfState")) $("#pfState").value = a.state || "";
+    if ($("#pfPincode")) $("#pfPincode").value = a.pincode || "";
+
+    if (pfPinHeader) pfPinHeader.textContent = "Change PIN (Optional — leave blank to keep current)";
+    if ($("#pfPin")) { $("#pfPin").required = false; $("#pfPin").value = ""; }
+    if ($("#pfConfirmPin")) { $("#pfConfirmPin").required = false; $("#pfConfirmPin").value = ""; }
+    if ($("#btnSubmitSaveProfile")) $("#btnSubmitSaveProfile").textContent = "Update Details";
+  } else {
+    if (loggedInHeader) loggedInHeader.style.display = "none";
+    if (tabsBar) tabsBar.style.display = "flex";
+    if (pfPinHeader) pfPinHeader.textContent = "Create Security PIN (4-6 digits) *";
+    if ($("#pfPin")) $("#pfPin").required = true;
+    if ($("#pfConfirmPin")) $("#pfConfirmPin").required = true;
+    if ($("#btnSubmitSaveProfile")) $("#btnSubmitSaveProfile").textContent = "Save Details";
+  }
+}
+
+function autofillCheckoutFromProfile(p) {
+  if (!p) return;
+  if ($("#custName")) $("#custName").value = p.fullName || "";
+  if ($("#custMobile")) $("#custMobile").value = p.mobile || "";
+  if ($("#custWhatsapp")) $("#custWhatsapp").value = p.whatsapp || "";
+  if ($("#custEmail")) $("#custEmail").value = p.email || "";
+
+  const a = p.address || {};
+  if ($("#addrHouse")) $("#addrHouse").value = a.house || "";
+  if ($("#addrStreet")) $("#addrStreet").value = a.street || "";
+  if ($("#addrArea")) $("#addrArea").value = a.area || "";
+  if ($("#addrCity")) $("#addrCity").value = a.city || "";
+  if ($("#addrDistrict")) $("#addrDistrict").value = a.district || "";
+  if ($("#addrState")) $("#addrState").value = a.state || "";
+  if ($("#addrPincode")) $("#addrPincode").value = a.pincode || "";
+}
+
+function showProfileAlert(msg, isError = true) {
+  const el = $("#profileAlertMsg");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = "block";
+  el.style.background = isError ? "#fde8e8" : "#def7ec";
+  el.style.color = isError ? "#9b1c1c" : "#03543f";
+  el.style.border = isError ? "1px solid #f8b4b4" : "1px solid #84e1bc";
+}
+
+function clearProfileAlert() {
+  const el = $("#profileAlertMsg");
+  if (el) el.style.display = "none";
+}
+
+// Listen to Firebase Auth state
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    try {
+      const snap = await getDoc(doc(db, "customer_profiles", user.uid));
+      if (snap.exists()) {
+        CURRENT_CUSTOMER_PROFILE = { uid: user.uid, ...snap.data() };
+      } else {
+        CURRENT_CUSTOMER_PROFILE = { uid: user.uid };
+      }
+    } catch (err) {
+      console.warn("Error fetching customer profile:", err.message);
+      CURRENT_CUSTOMER_PROFILE = null;
+    }
+  } else {
+    CURRENT_CUSTOMER_PROFILE = null;
+  }
+  syncProfileStateToUI();
+});
+
+// Setup eye toggles
+document.querySelectorAll(".pin-toggle-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const targetId = btn.dataset.target;
+    const input = document.getElementById(targetId);
+    if (!input) return;
+    if (input.type === "password") {
+      input.type = "text";
+      btn.style.opacity = "1";
+    } else {
+      input.type = "password";
+      btn.style.opacity = "0.6";
+    }
+  });
+});
+
+// "Same as Mobile" checkbox synchronization
+if ($("#chkSameAsMobile")) {
+  $("#chkSameAsMobile").addEventListener("change", (e) => {
+    if (e.target.checked && $("#custMobile")) {
+      $("#custWhatsapp").value = $("#custMobile").value;
+    }
+  });
+}
+if ($("#custMobile")) {
+  $("#custMobile").addEventListener("input", (e) => {
+    if ($("#chkSameAsMobile")?.checked && $("#custWhatsapp")) {
+      $("#custWhatsapp").value = e.target.value;
+    }
+  });
+}
+if ($("#chkPfSameAsMobile")) {
+  $("#chkPfSameAsMobile").addEventListener("change", (e) => {
+    if (e.target.checked && $("#pfMobile")) {
+      $("#pfWhatsapp").value = $("#pfMobile").value;
+    }
+  });
+}
+if ($("#pfMobile")) {
+  $("#pfMobile").addEventListener("input", (e) => {
+    if ($("#chkPfSameAsMobile")?.checked && $("#pfWhatsapp")) {
+      $("#pfWhatsapp").value = e.target.value;
+    }
+  });
+}
+if ($("#chkGuestSaveProfile")) {
+  $("#chkGuestSaveProfile").addEventListener("change", (e) => {
+    const fields = $("#guestPinFields");
+    if (fields) fields.style.display = e.target.checked ? "block" : "none";
+  });
+}
+
+// Modal open/close and tab switches
+function openCustomerProfileModal(defaultTab = "access") {
+  clearProfileAlert();
+  if (CURRENT_CUSTOMER_PROFILE) {
+    syncProfileStateToUI();
+  } else {
+    switchProfileTab(defaultTab);
+  }
+  $("#customerProfileModalOverlay")?.classList.add("open");
+}
+
+function switchProfileTab(tab) {
+  clearProfileAlert();
+  const btnAcc = $("#tabBtnAccessProfile");
+  const btnCre = $("#tabBtnCreateProfile");
+  const formAcc = $("#formAccessProfile");
+  const formSave = $("#formSaveProfile");
+
+  if (tab === "access") {
+    btnAcc?.classList.add("active");
+    btnAcc?.style.setProperty("background", "var(--dusty-rose)", "important");
+    btnAcc?.style.setProperty("color", "#fff", "important");
+    btnCre?.classList.remove("active");
+    btnCre?.style.setProperty("background", "var(--ivory)", "important");
+    btnCre?.style.setProperty("color", "var(--brown)", "important");
+    if (formAcc) formAcc.style.display = "block";
+    if (formSave) formSave.style.display = "none";
+  } else {
+    btnCre?.classList.add("active");
+    btnCre?.style.setProperty("background", "var(--dusty-rose)", "important");
+    btnCre?.style.setProperty("color", "#fff", "important");
+    btnAcc?.classList.remove("active");
+    btnAcc?.style.setProperty("background", "var(--ivory)", "important");
+    btnAcc?.style.setProperty("color", "var(--brown)", "important");
+    if (formAcc) formAcc.style.display = "none";
+    if (formSave) formSave.style.display = "block";
+  }
+}
+
+$("#tabBtnAccessProfile")?.addEventListener("click", () => switchProfileTab("access"));
+$("#tabBtnCreateProfile")?.addEventListener("click", () => switchProfileTab("create"));
+
+$("#profileToggle")?.addEventListener("click", () => openCustomerProfileModal("access"));
+$("#navSavedDetails")?.addEventListener("click", (e) => { e.preventDefault(); openCustomerProfileModal("access"); });
+$("#mobileSavedDetails")?.addEventListener("click", (e) => { e.preventDefault(); $("#mobileMenu")?.classList.remove("open"); openCustomerProfileModal("access"); });
+$("#bannerManageDetailsBtn")?.addEventListener("click", () => openCustomerProfileModal("access"));
+$("#closeCustomerProfile")?.addEventListener("click", () => $("#customerProfileModalOverlay")?.classList.remove("open"));
+$("#btnCancelProfile")?.addEventListener("click", () => $("#customerProfileModalOverlay")?.classList.remove("open"));
+$("#coForgotPinHelp")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  openCustomerProfileModal("create");
+});
+
+async function authenticateCustomer(mobile, pin) {
+  const cleanPhone = String(mobile || "").replace(/\D/g, "");
+  if (!cleanPhone || cleanPhone.length !== 10) {
+    throw new Error("Please enter a valid 10-digit mobile number.");
+  }
+  if (!pin || pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) {
+    throw new Error("Security PIN must be 4 to 6 numeric digits.");
+  }
+
+  const internalEmail = customerInternalEmail(cleanPhone);
+  const pinHash = await hashCustomerPin(cleanPhone, pin);
+
+  const userCredential = await signInWithEmailAndPassword(auth, internalEmail, pinHash);
+  const uid = userCredential.user.uid;
+
+  const pDoc = await getDoc(doc(db, "customer_profiles", uid));
+  if (!pDoc.exists()) {
+    throw new Error("No saved profile found for this mobile number. Please select 'Save New Details'.");
+  }
+
+  const profile = { uid, ...pDoc.data() };
+  CURRENT_CUSTOMER_PROFILE = profile;
+  syncProfileStateToUI();
+  return profile;
+}
+
+if ($("#formAccessProfile")) {
+  $("#formAccessProfile").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearProfileAlert();
+    const btn = $("#btnSubmitAccess");
+    const mob = $("#accMobile")?.value.trim();
+    const pin = $("#accPin")?.value.trim();
+
+    if (btn) { btn.disabled = true; btn.textContent = "Verifying..."; }
+    try {
+      const profile = await authenticateCustomer(mob, pin);
+      showProfileAlert(`Welcome back, ${profile.fullName}! Your saved details have been unlocked.`, false);
+      toast(`Welcome back, ${profile.fullName}!`);
+      setTimeout(() => {
+        $("#customerProfileModalOverlay")?.classList.remove("open");
+      }, 1000);
+    } catch (err) {
+      console.error("Profile access error:", err);
+      let errMsg = err.message;
+      if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found") {
+        errMsg = "Incorrect Mobile Number or PIN. If you haven't saved details yet, please choose 'Save New Details'.";
+      }
+      showProfileAlert(errMsg, true);
+      toast(errMsg);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "Unlock My Details"; }
+    }
+  });
+}
+
+if ($("#btnCoUnlockSaved")) {
+  $("#btnCoUnlockSaved").addEventListener("click", async () => {
+    const btn = $("#btnCoUnlockSaved");
+    const mob = $("#coAuthMobile")?.value.trim();
+    const pin = $("#coAuthPin")?.value.trim();
+
+    if (btn) { btn.disabled = true; btn.textContent = "Unlocking..."; }
+    try {
+      const profile = await authenticateCustomer(mob, pin);
+      autofillCheckoutFromProfile(profile);
+      toast(`Details loaded for ${profile.fullName}`);
+    } catch (err) {
+      console.error("Checkout profile unlock error:", err);
+      let errMsg = err.message;
+      if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found") {
+        errMsg = "Incorrect Mobile Number or PIN. You can also enter details manually as a guest.";
+      }
+      alert(errMsg);
+      toast(errMsg);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "Unlock & Load Details"; }
+    }
+  });
+}
+
+// Sign Out
+async function customerSignOut() {
+  try {
+    await signOut(auth);
+    CURRENT_CUSTOMER_PROFILE = null;
+    syncProfileStateToUI();
+    toast("Signed out of customer profile.");
+  } catch (err) {
+    console.error("Sign out error:", err);
+  }
+}
+$("#btnProfileSignOut")?.addEventListener("click", customerSignOut);
+$("#btnCoSignOut")?.addEventListener("click", customerSignOut);
+
+// Save or Update Customer Profile
+if ($("#formSaveProfile")) {
+  $("#formSaveProfile").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearProfileAlert();
+
+    const name = $("#pfName")?.value.trim();
+    const mobile = $("#pfMobile")?.value.trim().replace(/\D/g, "");
+    const whatsapp = $("#pfWhatsapp")?.value.trim().replace(/\D/g, "");
+    const email = $("#pfEmail")?.value.trim() || "";
+    const house = $("#pfHouse")?.value.trim();
+    const street = $("#pfStreet")?.value.trim();
+    const area = $("#pfArea")?.value.trim();
+    const city = $("#pfCity")?.value.trim();
+    const district = $("#pfDistrict")?.value.trim();
+    const state = $("#pfState")?.value.trim();
+    const pincode = $("#pfPincode")?.value.trim();
+    const pin = $("#pfPin")?.value.trim();
+    const confirmPin = $("#pfConfirmPin")?.value.trim();
+
+    if (!name) { showProfileAlert("Please enter your Full Name."); return; }
+    if (!mobile || mobile.length !== 10) { showProfileAlert("Please enter a valid 10-digit Mobile Number."); return; }
+    if (!whatsapp || whatsapp.length !== 10) { showProfileAlert("Please enter a valid 10-digit WhatsApp Number."); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showProfileAlert("Please enter a valid email address."); return; }
+    if (!house || !street || !area || !city || !district || !state) { showProfileAlert("Please complete all required delivery address fields."); return; }
+    if (!pincode || pincode.length !== 6 || !/^\d+$/.test(pincode)) { showProfileAlert("Please enter a valid 6-digit Pincode."); return; }
+
+    const isCreating = !auth.currentUser;
+    if (isCreating || pin) {
+      if (!pin || pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) {
+        showProfileAlert("Security PIN must be 4 to 6 numeric digits.");
+        return;
+      }
+      if (pin !== confirmPin) {
+        showProfileAlert("Security PIN and Confirm PIN do not match.");
+        return;
+      }
+    }
+
+    const btn = $("#btnSubmitSaveProfile");
+    if (btn) { btn.disabled = true; btn.textContent = "Saving Details..."; }
+
+    try {
+      let uid = auth.currentUser?.uid;
+
+      if (!uid) {
+        const internalEmail = customerInternalEmail(mobile);
+        const pinHash = await hashCustomerPin(mobile, pin);
+
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, internalEmail, pinHash);
+          uid = cred.user.uid;
+        } catch (authErr) {
+          if (authErr.code === "auth/email-already-in-use") {
+            const cred = await signInWithEmailAndPassword(auth, internalEmail, pinHash);
+            uid = cred.user.uid;
+          } else {
+            throw authErr;
+          }
+        }
+      }
+
+      const profileData = {
+        fullName: name,
+        mobile,
+        whatsapp,
+        email,
+        address: { house, street, area, city, district, state, pincode },
+        updatedAt: serverTimestamp()
+      };
+
+      await setDoc(doc(db, "customer_profiles", uid), profileData, { merge: true });
+
+      CURRENT_CUSTOMER_PROFILE = { uid, ...profileData };
+      syncProfileStateToUI();
+      showProfileAlert("Your delivery details have been saved successfully!", false);
+      toast("Details saved successfully!");
+      setTimeout(() => {
+        $("#customerProfileModalOverlay")?.classList.remove("open");
+      }, 1200);
+
+    } catch (err) {
+      console.error("Save profile error:", err);
+      showProfileAlert("Failed to save details: " + err.message, true);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = CURRENT_CUSTOMER_PROFILE ? "Update Details" : "Save Details"; }
+    }
+  });
+}
+
+// Checkout Step 2 option toggles
+if ($("#btnChoiceSaved")) {
+  $("#btnChoiceSaved").addEventListener("click", () => {
+    checkoutOptionMode = "saved";
+    $("#btnChoiceSaved")?.classList.add("active");
+    $("#btnChoiceSaved")?.style.setProperty("background", "var(--dusty-rose)", "important");
+    $("#btnChoiceSaved")?.style.setProperty("color", "#fff", "important");
+    $("#btnChoiceSaved")?.style.setProperty("border-color", "var(--dusty-rose)", "important");
+
+    $("#btnChoiceManual")?.classList.remove("active");
+    $("#btnChoiceManual")?.style.setProperty("background", "var(--white)", "important");
+    $("#btnChoiceManual")?.style.setProperty("color", "var(--brown)", "important");
+    $("#btnChoiceManual")?.style.setProperty("border-color", "var(--beige)", "important");
+
+    const vSaved = $("#viewSavedDetails");
+    const gWrap = $("#guestSaveProfileWrap");
+    if (vSaved) vSaved.style.display = "block";
+    if (gWrap) gWrap.style.display = "none";
+
+    if (CURRENT_CUSTOMER_PROFILE) {
+      autofillCheckoutFromProfile(CURRENT_CUSTOMER_PROFILE);
+    }
+  });
+}
+
+if ($("#btnChoiceManual")) {
+  $("#btnChoiceManual").addEventListener("click", () => {
+    checkoutOptionMode = "manual";
+    $("#btnChoiceManual")?.classList.add("active");
+    $("#btnChoiceManual")?.style.setProperty("background", "var(--dusty-rose)", "important");
+    $("#btnChoiceManual")?.style.setProperty("color", "#fff", "important");
+    $("#btnChoiceManual")?.style.setProperty("border-color", "var(--dusty-rose)", "important");
+
+    $("#btnChoiceSaved")?.classList.remove("active");
+    $("#btnChoiceSaved")?.style.setProperty("background", "var(--white)", "important");
+    $("#btnChoiceSaved")?.style.setProperty("color", "var(--brown)", "important");
+    $("#btnChoiceSaved")?.style.setProperty("border-color", "var(--beige)", "important");
+
+    const vSaved = $("#viewSavedDetails");
+    const gWrap = $("#guestSaveProfileWrap");
+    if (vSaved) vSaved.style.display = "none";
+    if (gWrap) gWrap.style.display = "block";
+  });
+}
+
+function setupPaymentMethodControls() {
+  const codCard = $("#cardMethodCod");
+  const upiCard = $("#cardMethodUpi");
+  const upiPanel = $("#upiPaymentPanel");
+  const nextBtn = $("#nextStep");
+
+  function setMethod(method) {
+    selectedPaymentMethod = method;
+    if (method === "UPI") {
+      upiCard?.classList.add("active");
+      upiCard?.style.setProperty("background", "var(--ivory)");
+      upiCard?.style.setProperty("border-color", "var(--dusty-rose)");
+
+      codCard?.classList.remove("active");
+      codCard?.style.setProperty("background", "var(--white)");
+      codCard?.style.setProperty("border-color", "var(--beige)");
+
+      const upiRadio = $("#cardMethodUpi input");
+      if (upiRadio) upiRadio.checked = true;
+      if (upiPanel) upiPanel.style.display = "block";
+      if (nextBtn && currentStep === 5) nextBtn.textContent = "Place Order & Pay via UPI";
+      updateUpiPanelDetails();
+    } else {
+      codCard?.classList.add("active");
+      codCard?.style.setProperty("background", "var(--ivory)");
+      codCard?.style.setProperty("border-color", "var(--dusty-rose)");
+
+      upiCard?.classList.remove("active");
+      upiCard?.style.setProperty("background", "var(--white)");
+      upiCard?.style.setProperty("border-color", "var(--beige)");
+
+      const codRadio = $("#cardMethodCod input");
+      if (codRadio) codRadio.checked = true;
+      if (upiPanel) upiPanel.style.display = "none";
+      if (nextBtn && currentStep === 5) nextBtn.textContent = "Confirm Order (Cash on Delivery)";
+    }
+  }
+
+  codCard?.addEventListener("click", () => setMethod("COD"));
+  upiCard?.addEventListener("click", () => setMethod("UPI"));
+
+  document.querySelectorAll('input[name="paymentMethodRadio"]').forEach(r => {
+    r.addEventListener("change", (e) => setMethod(e.target.value));
+  });
+
+  if ($("#btnCopyUpiId")) {
+    $("#btnCopyUpiId").addEventListener("click", async () => {
+      const upiId = SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis";
+      try {
+        await navigator.clipboard.writeText(upiId);
+        const originalText = $("#btnCopyUpiId").textContent;
+        $("#btnCopyUpiId").textContent = "Copied!";
+        setTimeout(() => { if ($("#btnCopyUpiId")) $("#btnCopyUpiId").textContent = originalText; }, 2000);
+        toast("UPI ID copied to clipboard!");
+      } catch (e) {
+        toast("UPI ID: " + upiId);
+      }
+    });
+  }
+
+  if ($("#upiScreenshotFile")) {
+    $("#upiScreenshotFile").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        currentUploadedScreenshotDataUrl = await compressImageFileToDataUrl(file);
+        const preview = $("#upiScreenshotPreview");
+        const wrap = $("#upiScreenshotPreviewWrap");
+        if (preview) preview.src = currentUploadedScreenshotDataUrl;
+        if (wrap) wrap.style.display = "block";
+        toast("Screenshot attached.");
+      } catch (err) {
+        alert(err.message);
+        e.target.value = "";
+      }
+    });
+  }
+
+  if ($("#btnRemoveScreenshot")) {
+    $("#btnRemoveScreenshot").addEventListener("click", () => {
+      currentUploadedScreenshotDataUrl = "";
+      const input = $("#upiScreenshotFile");
+      if (input) input.value = "";
+      const wrap = $("#upiScreenshotPreviewWrap");
+      if (wrap) wrap.style.display = "none";
+    });
+  }
+
+  setMethod(selectedPaymentMethod);
+}
+
+function updateUpiPanelDetails() {
+  const upiId = SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis";
+  if ($("#displayUpiId")) $("#displayUpiId").textContent = upiId;
+
+  const total = getCheckoutTotal();
+  const upiAppBtn = $("#btnLaunchUpiApp");
+  if (upiAppBtn) {
+    const storeName = encodeURIComponent(SETTINGS.businessName || "Blume Arts");
+    const note = encodeURIComponent("Blume Arts Order");
+    upiAppBtn.href = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${total}&cu=INR&tn=${note}`;
+  }
+}
+
 function showStep(n) {
   currentStep = n;
   document.querySelectorAll(".step-dot").forEach(d => {
@@ -688,18 +1307,63 @@ function showStep(n) {
   });
   document.querySelectorAll(".checkout-step").forEach(s => s.classList.toggle("active", Number(s.dataset.step) === n));
   if ($("#backStep")) $("#backStep").style.visibility = n === 1 ? "hidden" : "visible";
-  if ($("#nextStep")) $("#nextStep").textContent = n === 5 ? "Confirm Order on WhatsApp" : "Continue";
-  if (n === 5) renderFinalSummary();
+  
+  if (n === 2) {
+    if (CURRENT_CUSTOMER_PROFILE && checkoutOptionMode === "saved") {
+      autofillCheckoutFromProfile(CURRENT_CUSTOMER_PROFILE);
+    }
+  }
+
+  if (n === 5) {
+    renderFinalSummary();
+    setupPaymentMethodControls();
+  } else {
+    if ($("#nextStep")) $("#nextStep").textContent = "Continue";
+  }
 }
 
 function validateStep(n) {
   if (n === 2) {
-    const name = $("#custName").value.trim(), mobile = $("#custMobile").value.trim(), wa = $("#custWhatsapp").value.trim();
-    if (!name || !mobile || !wa) { toast("Please fill all required fields"); return false; }
+    const name = $("#custName").value.trim();
+    const rawMobile = $("#custMobile").value.trim();
+    const rawWa = $("#custWhatsapp").value.trim();
+    const cleanMob = rawMobile.replace(/\D/g, "");
+    const cleanWa = rawWa.replace(/\D/g, "");
+
+    if (!name) { toast("Please enter your Full Name."); return false; }
+    if (!cleanMob || cleanMob.length !== 10) { toast("Please enter a valid 10-digit Mobile Number."); return false; }
+    if (!cleanWa || cleanWa.length !== 10) { toast("Please enter a valid 10-digit WhatsApp Number."); return false; }
+
+    const email = $("#custEmail").value.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast("Please enter a valid email address.");
+      return false;
+    }
+
+    if ($("#chkGuestSaveProfile")?.checked) {
+      const pin = $("#guestCreatePin")?.value.trim();
+      const confirmPin = $("#guestConfirmPin")?.value.trim();
+      if (!pin || pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) {
+        toast("To save your details, enter a 4-6 digit numeric PIN.");
+        return false;
+      }
+      if (pin !== confirmPin) {
+        toast("PIN and Confirm PIN do not match.");
+        return false;
+      }
+    }
   }
+
   if (n === 3) {
-    const req = ["addrHouse", "addrStreet", "addrArea", "addrCity", "addrDistrict", "addrState", "addrPincode"];
-    for (const id of req) if (!$("#" + id).value.trim()) { toast("Please complete the delivery address"); return false; }
+    const req = ["addrHouse", "addrStreet", "addrArea", "addrCity", "addrDistrict", "addrState"];
+    for (const id of req) {
+      if (!$("#" + id).value.trim()) { toast("Please complete all address fields."); return false; }
+    }
+    const pincode = $("#addrPincode").value.trim();
+    if (!pincode || pincode.length !== 6 || !/^\d+$/.test(pincode)) {
+      toast("Please enter a valid 6-digit Pincode.");
+      return false;
+    }
   }
   return true;
 }
@@ -722,14 +1386,14 @@ function renderFinalSummary() {
   const addr = fullAddress();
 
   $("#finalSummary").innerHTML = `
-    <div class="summary-block"><h4>Customer</h4>
-      <p>${$("#custName").value}<br>${$("#custMobile").value} ${$("#custEmail").value ? "· " + $("#custEmail").value : ""}</p></div>
+    <div class="summary-block"><h4>Customer Details</h4>
+      <p><strong>${removeEmojis($("#custName").value)}</strong><br>${$("#custMobile").value} ${$("#custEmail").value ? "· " + $("#custEmail").value : ""}</p></div>
     <div class="summary-block"><h4>Delivery Address</h4><p>${addr.replace(/\n/g, "<br>")}</p></div>
     <div class="summary-block"><h4>Order Items</h4>
       ${items.map(i => `<div class="order-line"><span>${removeEmojis(i.name)} ${i.color ? "(" + removeEmojis(i.color) + ")" : ""} × ${i.qty}</span><span>${money(i.price * i.qty)}</span></div>`).join("")}
       <div class="order-line" style="margin-top:8px; border-top:1px dashed #ddd; padding-top:6px;"><span>Subtotal</span><span>${money(subtotal)}</span></div>
       <div class="order-line"><span>Delivery Charge</span><span>${money(delivery)}</span></div>
-      <div class="order-line" style="font-weight:700; color:var(--rose-deep); font-size:1.05rem;"><span>Final Total</span><span>${money(total)}</span></div>
+      <div class="order-line" style="font-weight:700; color:var(--rose-deep); font-size:1.05rem;"><span>Final Payable Total</span><span>${money(total)}</span></div>
     </div>
     ${$("#specialNotes").value.trim() ? `<div class="summary-block"><h4>Special Instructions</h4><p>${removeEmojis($("#specialNotes").value)}</p></div>` : ""}
   `;
@@ -764,12 +1428,18 @@ function getCleanWhatsappPhone(rawPhone) {
 
 function buildWhatsappMessage(orderId, items, subtotal, delivery, total) {
   const storeName = removeEmojis(SETTINGS.businessName || "BLUME ARTS").toUpperCase();
+  const isUpi = (selectedPaymentMethod === "UPI");
+  const utr = $("#upiUtrNumber")?.value.trim();
+
   let msg = `==================\n${storeName}\nNEW ORDER\n==================\n\n`;
   msg += `Order ID: ${orderId}\n\nORDER DETAILS:\n\n`;
   items.forEach((i, idx) => {
     msg += `${idx + 1}. ${removeEmojis(i.name)}${i.color ? " (" + removeEmojis(i.color) + ")" : ""}\nQuantity: ${i.qty}\nPrice: ${money(i.price)}\nSubtotal: ${money(i.price * i.qty)}\n\n`;
   });
-  msg += `==================\nSubtotal: ${money(subtotal)}\nDelivery Charge: ${money(delivery)}\nFINAL TOTAL: ${money(total)}\n\nCUSTOMER DETAILS:\n\n`;
+  msg += `==================\nSubtotal: ${money(subtotal)}\nDelivery Charge: ${money(delivery)}\nFINAL TOTAL: ${money(total)}\n\n`;
+  msg += `PAYMENT METHOD: ${isUpi ? "Online UPI (Payment Pending Verification)" : "Cash on Delivery"}\n`;
+  if (isUpi && utr) msg += `UPI Reference / UTR: ${utr}\n`;
+  msg += `\nCUSTOMER DETAILS:\n\n`;
   msg += `Name: ${removeEmojis($("#custName")?.value || "")}\nMobile: ${$("#custMobile")?.value || ""}\nWhatsApp: ${$("#custWhatsapp")?.value || ""}\nEmail: ${$("#custEmail")?.value || "N/A"}\n\nDELIVERY ADDRESS:\n\n${fullAddress()}\n\n`;
   msg += `SPECIAL INSTRUCTIONS:\n\n${removeEmojis($("#specialNotes")?.value || "").trim() || "None"}\n\n`;
   msg += `==================\nThank you for choosing ${storeName}\n==================`;
@@ -777,11 +1447,22 @@ function buildWhatsappMessage(orderId, items, subtotal, delivery, total) {
 }
 
 function resetCheckoutForm() {
-  const ids = ["custName", "custMobile", "custWhatsapp", "custEmail", "addrHouse", "addrStreet", "addrArea", "addrCity", "addrDistrict", "addrState", "addrPincode", "specialNotes"];
+  const ids = [
+    "custName", "custMobile", "custWhatsapp", "custEmail",
+    "addrHouse", "addrStreet", "addrArea", "addrCity", "addrDistrict", "addrState", "addrPincode",
+    "specialNotes", "coAuthMobile", "coAuthPin", "guestCreatePin", "guestConfirmPin", "upiUtrNumber"
+  ];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+  if ($("#chkGuestSaveProfile")) $("#chkGuestSaveProfile").checked = false;
+  if ($("#guestPinFields")) $("#guestPinFields").style.display = "none";
+  if ($("#chkSameAsMobile")) $("#chkSameAsMobile").checked = false;
+  if ($("#upiScreenshotFile")) $("#upiScreenshotFile").value = "";
+  if ($("#upiScreenshotPreviewWrap")) $("#upiScreenshotPreviewWrap").style.display = "none";
+  currentUploadedScreenshotDataUrl = "";
+  selectedPaymentMethod = "COD";
   currentStep = 1;
 }
 
@@ -791,6 +1472,10 @@ async function submitOrder() {
   const deliveryCharge = getCheckoutDeliveryCharge();
   const total = getCheckoutTotal();
   const orderId = await generateOrderId();
+  const isUpi = (selectedPaymentMethod === "UPI");
+  const upiUtr = isUpi ? ($("#upiUtrNumber")?.value.trim() || "") : "";
+  const paymentMethod = isUpi ? "UPI" : "COD";
+  const paymentStatus = isUpi ? "Payment Pending Verification" : "Pending (Cash on Delivery)";
 
   const nextBtn = $("#nextStep");
   if (nextBtn) {
@@ -803,7 +1488,6 @@ async function submitOrder() {
     await runTransaction(db, async (transaction) => {
       const productUpdates = [];
 
-      // Step 1: Read all products and verify stock atomically
       for (const item of items) {
         if (!item.id) continue;
         const pRef = doc(db, "products", item.id);
@@ -819,7 +1503,6 @@ async function submitOrder() {
         productUpdates.push({ ref: pRef, newStock: currentStock - item.qty });
       }
 
-      // Step 2: Decrement stock for all items
       for (const update of productUpdates) {
         transaction.update(update.ref, {
           stockQuantity: update.newStock,
@@ -828,13 +1511,13 @@ async function submitOrder() {
         });
       }
 
-      // Step 3: Create Order Document
       const newOrderRef = doc(collection(db, "orders"));
       const orderData = {
         orderId,
+        customerUid: auth.currentUser ? auth.currentUser.uid : null,
         customerName: $("#custName").value.trim(),
-        mobile: $("#custMobile").value.trim(),
-        whatsapp: $("#custWhatsapp").value.trim(),
+        mobile: $("#custMobile").value.trim().replace(/\D/g, ""),
+        whatsapp: $("#custWhatsapp").value.trim().replace(/\D/g, ""),
         email: $("#custEmail").value.trim() || "",
         address: {
           house: $("#addrHouse").value.trim(),
@@ -850,11 +1533,15 @@ async function submitOrder() {
         deliveryCharge,
         total,
         status: "Order Placed",
+        paymentMethod,
+        paymentStatus,
+        upiUtr,
+        paymentScreenshot: isUpi ? (currentUploadedScreenshotDataUrl || "") : "",
         statusHistory: [
           {
             status: "Order Placed",
             timestamp: new Date().toISOString(),
-            note: "Order placed by customer"
+            note: isUpi ? "Order placed with Online UPI (Payment Pending Verification)" : "Order placed with Cash on Delivery"
           }
         ],
         notes: $("#specialNotes").value.trim() || "",
@@ -862,6 +1549,53 @@ async function submitOrder() {
       };
       transaction.set(newOrderRef, orderData);
     });
+
+    // If guest checked "Save these details", create their profile securely in background
+    if ($("#chkGuestSaveProfile")?.checked && !auth.currentUser) {
+      const guestMobile = $("#custMobile").value.trim().replace(/\D/g, "");
+      const guestPin = $("#guestCreatePin")?.value.trim();
+      if (guestMobile.length === 10 && guestPin && guestPin.length >= 4) {
+        (async () => {
+          try {
+            const internalEmail = customerInternalEmail(guestMobile);
+            const pinHash = await hashCustomerPin(guestMobile, guestPin);
+            let uid;
+            try {
+              const cred = await createUserWithEmailAndPassword(auth, internalEmail, pinHash);
+              uid = cred.user.uid;
+            } catch (err) {
+              if (err.code === "auth/email-already-in-use") {
+                const cred = await signInWithEmailAndPassword(auth, internalEmail, pinHash);
+                uid = cred.user.uid;
+              }
+            }
+            if (uid) {
+              const profileData = {
+                fullName: $("#custName").value.trim(),
+                mobile: guestMobile,
+                whatsapp: $("#custWhatsapp").value.trim().replace(/\D/g, ""),
+                email: $("#custEmail").value.trim() || "",
+                address: {
+                  house: $("#addrHouse").value.trim(),
+                  street: $("#addrStreet").value.trim(),
+                  area: $("#addrArea").value.trim(),
+                  city: $("#addrCity").value.trim(),
+                  district: $("#addrDistrict").value.trim(),
+                  state: $("#addrState").value.trim(),
+                  pincode: $("#addrPincode").value.trim(),
+                },
+                updatedAt: serverTimestamp()
+              };
+              await setDoc(doc(db, "customer_profiles", uid), profileData, { merge: true });
+              CURRENT_CUSTOMER_PROFILE = { uid, ...profileData };
+              syncProfileStateToUI();
+            }
+          } catch (e) {
+            console.warn("Background guest profile save notice:", e.message);
+          }
+        })();
+      }
+    }
 
     const waMessage = buildWhatsappMessage(orderId, items, subtotal, deliveryCharge, total);
     const cleanPhone = getCleanWhatsappPhone(SETTINGS.whatsapp || SETTINGS.phone);
@@ -875,7 +1609,9 @@ async function submitOrder() {
       total,
       waUrl,
       waMessage,
-      phone: cleanPhone
+      phone: cleanPhone,
+      paymentMethod,
+      paymentStatus
     };
 
     if (checkoutMode === "cart") { CART = []; saveCart(); renderCart(); }
@@ -883,6 +1619,18 @@ async function submitOrder() {
 
     $("#checkoutOverlay").classList.remove("open");
     $("#confirmOrderId").textContent = orderId;
+
+    const confMethodBadge = $("#confirmPaymentMethodBadge");
+    const confStatusBadge = $("#confirmPaymentStatusBadge");
+    if (confMethodBadge) {
+      confMethodBadge.textContent = paymentMethod === "UPI" ? "Online UPI" : "Cash on Delivery";
+      confMethodBadge.className = "payment-badge " + (paymentMethod === "UPI" ? "payment-verified" : "payment-cod");
+    }
+    if (confStatusBadge) {
+      confStatusBadge.textContent = paymentStatus;
+      confStatusBadge.className = "payment-badge " + (paymentStatus.includes("Verified") ? "payment-verified" : "payment-pending");
+    }
+
     $("#confirmOverlay").classList.add("open");
     document.body.style.overflow = "hidden";
 
@@ -893,7 +1641,7 @@ async function submitOrder() {
   } finally {
     if (nextBtn) {
       nextBtn.disabled = false;
-      nextBtn.textContent = "Continue";
+      nextBtn.textContent = selectedPaymentMethod === "UPI" ? "Place Order & Pay via UPI" : "Confirm Order (Cash on Delivery)";
     }
   }
 }
@@ -1015,6 +1763,19 @@ function renderTrackResult(o) {
   if (statusBadge) {
     statusBadge.textContent = o.status || "Order Placed";
     statusBadge.className = "status-pill-badge " + (o.status === "Cancelled" ? "cancelled" : (o.status === "Delivered" ? "delivered" : "active"));
+  }
+
+  const payMethodBadge = $("#trackPaymentMethodBadge");
+  if (payMethodBadge) {
+    payMethodBadge.textContent = o.paymentMethod === "UPI" ? "Online UPI" : "Cash on Delivery";
+    payMethodBadge.className = "payment-badge " + (o.paymentMethod === "UPI" ? "payment-verified" : "payment-cod");
+  }
+
+  const payStatusBadge = $("#trackPaymentStatusBadge");
+  if (payStatusBadge) {
+    const payStatus = o.paymentStatus || (o.paymentMethod === "UPI" ? "Payment Pending Verification" : "Pending (Cash on Delivery)");
+    payStatusBadge.textContent = payStatus;
+    payStatusBadge.className = "payment-badge " + (payStatus.includes("Verified") ? "payment-verified" : (payStatus.includes("Failed") ? "payment-failed" : "payment-pending"));
   }
 
   // 6-step lifecycle timeline
