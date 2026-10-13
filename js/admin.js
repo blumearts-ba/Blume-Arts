@@ -652,13 +652,17 @@ function renderOrdersTable() {
       <td>₹${(o.total || 0).toLocaleString("en-IN")}</td>
       <td>${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString() : "—"}</td>
       <td>
+        <span class="pill ${o.paymentMethod === "UPI" ? "yes" : "no"}" style="font-size:.7rem; display:inline-block; margin-bottom:2px;">${o.paymentMethod || "COD"}</span>
+        <div style="font-size:.68rem; opacity:.75; max-width:110px; line-height:1.2;">${o.paymentStatus || (o.paymentMethod === "UPI" ? "Pending Verification" : "Pay on Delivery")}</div>
+      </td>
+      <td>
         <select class="status-select" data-id="${o.id}">
           ${STATUSES.map(s => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}
         </select>
       </td>
       <td><span class="icon-action view-order" data-id="${o.id}" title="View Order"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></td>
     </tr>
-  `).join("") || `<tr><td colspan="7" style="text-align:center;opacity:.6;padding:30px">No orders matching criteria.</td></tr>`;
+  `).join("") || `<tr><td colspan="8" style="text-align:center;opacity:.6;padding:30px">No orders matching criteria.</td></tr>`;
 
   document.querySelectorAll(".status-select").forEach(sel => {
     sel.addEventListener("change", async () => {
@@ -689,6 +693,34 @@ function openOrderModal(id) {
     <div class="form-group"><label>Delivery Charge</label><p>₹${o.deliveryCharge || 0}</p></div>
     <div class="form-group"><label>Final Total</label><p style="font-weight:600;color:var(--rose-deep);font-size:1.1rem;">₹${(o.total || 0).toLocaleString("en-IN")}</p></div>
     ${o.notes ? `<div class="form-group"><label>Customer Notes</label><p>${o.notes}</p></div>` : ""}
+
+    <div class="form-group" style="background:var(--cream); padding:12px; border-radius:10px; border:1px solid var(--beige); margin-top:12px;">
+      <label style="font-weight:600; color:var(--rose-deep); margin-bottom:6px;">Payment Verification & Details</label>
+      <div style="font-size:.82rem; margin-bottom:6px;">
+        <strong>Method:</strong> ${o.paymentMethod || "COD"} | <strong>Status:</strong> <span class="pill ${o.paymentStatus?.includes('Verified') ? 'yes' : 'no'}" style="font-size:.7rem;">${o.paymentStatus || (o.paymentMethod === 'UPI' ? 'Payment Pending Verification' : 'Pending (COD)')}</span>
+      </div>
+      ${o.upiUtr ? `<div style="font-size:.8rem; margin-bottom:6px;"><strong>UPI Reference / UTR:</strong> <code>${o.upiUtr}</code></div>` : ""}
+      ${o.paymentScreenshot ? `
+        <div style="margin:8px 0;">
+          <strong style="font-size:.78rem; display:block; margin-bottom:4px;">Uploaded Payment Evidence:</strong>
+          <a href="${o.paymentScreenshot}" target="_blank" title="Click to view full image">
+            <img src="${o.paymentScreenshot}" alt="Payment Evidence" style="max-width:180px; max-height:140px; border-radius:8px; border:1px solid var(--beige); object-fit:cover; display:block;">
+          </a>
+          <span style="font-size:.7rem; opacity:.65;">Click image to inspect full size in new tab</span>
+        </div>
+      ` : ""}
+      <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+        <select id="adminUpdatePaymentStatusSelect" style="padding:6px 10px; font-size:.8rem; border-radius:8px; border:1px solid var(--beige);">
+          <option value="Payment Pending Verification" ${o.paymentStatus === "Payment Pending Verification" ? "selected" : ""}>Payment Pending Verification</option>
+          <option value="Payment Verified / Paid" ${o.paymentStatus === "Payment Verified / Paid" ? "selected" : ""}>Payment Verified / Paid</option>
+          <option value="Payment Failed / Rejected" ${o.paymentStatus === "Payment Failed / Rejected" ? "selected" : ""}>Payment Failed / Rejected</option>
+          <option value="Pending (Cash on Delivery)" ${o.paymentStatus === "Pending (Cash on Delivery)" ? "selected" : ""}>Pending (Cash on Delivery)</option>
+          <option value="Cash Collected (Delivered)" ${o.paymentStatus === "Cash Collected (Delivered)" ? "selected" : ""}>Cash Collected (Delivered)</option>
+        </select>
+        <button class="btn sm" id="btnAdminSavePaymentStatus" style="font-size:.75rem;">Update Payment Status</button>
+      </div>
+    </div>
+
     ${history.length > 0 ? `
       <div class="form-group"><label>Status History</label>
         <ul style="font-size:.82rem; padding-left:20px; line-height:1.6; opacity:.85; max-height:100px; overflow-y:auto;">
@@ -708,6 +740,24 @@ function openOrderModal(id) {
   `;
   $("#orderModalOverlay").classList.add("open");
   $("#closeOrderModal").addEventListener("click", () => $("#orderModalOverlay").classList.remove("open"));
+
+  if ($("#btnAdminSavePaymentStatus")) {
+    $("#btnAdminSavePaymentStatus").addEventListener("click", async () => {
+      const newPayStatus = $("#adminUpdatePaymentStatusSelect")?.value;
+      if (!newPayStatus) return;
+      try {
+        await updateDoc(doc(db, "orders", o.id), {
+          paymentStatus: newPayStatus,
+          updatedAt: serverTimestamp()
+        });
+        o.paymentStatus = newPayStatus;
+        alert("Payment status updated to: " + newPayStatus);
+        renderOrdersTable();
+      } catch (err) {
+        alert("Failed to update payment status: " + err.message);
+      }
+    });
+  }
 
   // Real-Time listener for seller messages on this order
   const msgList = $("#adminSellerMessagesList");
@@ -828,6 +878,7 @@ async function loadSettingsForm() {
   if ($("#setBusinessName")) $("#setBusinessName").value = s.businessName || "";
   if ($("#setPhone")) $("#setPhone").value = s.phone || "";
   if ($("#setWhatsapp")) $("#setWhatsapp").value = s.whatsapp || "";
+  if ($("#setUpiId")) $("#setUpiId").value = s.upiId || DEFAULT_SETTINGS.upiId || "";
   if ($("#setEmail")) $("#setEmail").value = s.email || "";
   if ($("#setInstagram")) $("#setInstagram").value = s.instagram || "";
   if ($("#setInstagramUrl")) $("#setInstagramUrl").value = s.instagramUrl || "";
@@ -843,6 +894,7 @@ if ($("#saveSettingsBtn")) {
       businessName: $("#setBusinessName").value.trim(),
       phone: $("#setPhone").value.trim(),
       whatsapp: $("#setWhatsapp").value.trim(),
+      upiId: ($("#setUpiId")?.value.trim()) || DEFAULT_SETTINGS.upiId,
       email: $("#setEmail").value.trim(),
       instagram: $("#setInstagram").value.trim(),
       instagramUrl: $("#setInstagramUrl").value.trim(),
