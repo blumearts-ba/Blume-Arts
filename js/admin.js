@@ -212,10 +212,11 @@ function renderDashboard() {
   if ($("#statTotalProducts")) $("#statTotalProducts").textContent = PRODUCTS.length;
   if ($("#statActiveProducts")) $("#statActiveProducts").textContent = PRODUCTS.filter(p => p.available !== false).length;
   
-  const outOfStockCount = PRODUCTS.filter(p => Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0)) <= 0).length;
+  const outOfStockCount = PRODUCTS.filter(p => !p.unlimitedStock && Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0)) <= 0).length;
   if ($("#statOutOfStock")) $("#statOutOfStock").textContent = outOfStockCount;
 
   const lowStockCount = PRODUCTS.filter(p => {
+    if (p.unlimitedStock) return false;
     const s = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
     return s > 0 && s <= 3;
   }).length;
@@ -287,9 +288,12 @@ function populateCategorySelect() {
 function renderProductsTable() {
   if (!$("#productsTbody")) return;
   $("#productsTbody").innerHTML = PRODUCTS.map(p => {
+    const isUnlimited = Boolean(p.unlimitedStock);
     const stockNum = Number(p.stockQuantity !== undefined ? p.stockQuantity : (p.stock || 0));
     let stockPill = `<span>${stockNum}</span>`;
-    if (stockNum <= 0) {
+    if (isUnlimited) {
+      stockPill = `<span class="pill yes" style="background:#e6f4ea;color:#137333;border:1px solid #ceead6">Unlimited</span>`;
+    } else if (stockNum <= 0) {
       stockPill = `<span class="pill no">Out of Stock (0)</span>`;
     } else if (stockNum <= 3) {
       stockPill = `<span class="pill warning" style="background:#fff5eb;color:#b7791f;border:1px solid #fbd38d">Low Stock (${stockNum})</span>`;
@@ -359,6 +363,9 @@ function openProductModal(id) {
     $("#fName").value = p.name || "";
     $("#fPrice").value = p.price || "";
     $("#fDeliveryCharge").value = p.deliveryCharge || 0;
+    const isUnlimited = Boolean(p.unlimitedStock);
+    if ($("#fUnlimitedStock")) $("#fUnlimitedStock").checked = isUnlimited;
+    if ($("#stockQtyGroup")) $("#stockQtyGroup").style.display = isUnlimited ? "none" : "block";
     $("#fStock").value = p.stockQuantity ?? p.stock ?? 10;
     $("#fCategory").value = p.category || "";
     $("#fColors").value = (p.colors || []).join(", ");
@@ -381,6 +388,8 @@ function openProductModal(id) {
     $("#productModalTitle").textContent = "Add Product";
     ["fName", "fPrice", "fColors", "fDescription"].forEach(id => $("#" + id).value = "");
     $("#fDeliveryCharge").value = 0;
+    if ($("#fUnlimitedStock")) $("#fUnlimitedStock").checked = false;
+    if ($("#stockQtyGroup")) $("#stockQtyGroup").style.display = "block";
     $("#fStock").value = 10;
     $("#fAvailable").value = "true";
     $("#fFeatured").value = "false";
@@ -388,6 +397,13 @@ function openProductModal(id) {
     for (let i = 0; i < 4; i++) updateSlotPreviewUI(i);
   }
   $("#productModalOverlay").classList.add("open");
+}
+
+if ($("#fUnlimitedStock")) {
+  $("#fUnlimitedStock").addEventListener("change", (e) => {
+    const stockGroup = $("#stockQtyGroup");
+    if (stockGroup) stockGroup.style.display = e.target.checked ? "none" : "block";
+  });
 }
 
 if ($("#addProductBtn")) $("#addProductBtn").addEventListener("click", () => openProductModal(null));
@@ -441,7 +457,21 @@ if ($("#saveProductBtn")) {
     const rawPrice = $("#fPrice").value;
     const price = Number(rawPrice);
     const deliveryCharge = Number($("#fDeliveryCharge").value) || 0;
-    const stockQuantity = Number($("#fStock").value) || 0;
+    const isUnlimited = $("#fUnlimitedStock") ? $("#fUnlimitedStock").checked : false;
+
+    let stockQuantity = 0;
+    if (!isUnlimited) {
+      const rawStock = $("#fStock").value.trim();
+      const parsedStock = Number(rawStock);
+      if (rawStock === "" || isNaN(parsedStock) || !Number.isInteger(parsedStock) || parsedStock < 0) {
+        alert("Please enter a valid stock quantity (whole number 0 or greater).");
+        return;
+      }
+      stockQuantity = parsedStock;
+    } else {
+      stockQuantity = 9999;
+    }
+
     const category = $("#fCategory").value || "";
     const colors = $("#fColors").value.split(",").map(s => s.trim()).filter(Boolean);
     const description = $("#fDescription").value.trim();
@@ -482,6 +512,7 @@ if ($("#saveProductBtn")) {
         name,
         price,
         deliveryCharge,
+        unlimitedStock: isUnlimited,
         stockQuantity,
         stock: stockQuantity,
         category,
@@ -592,9 +623,12 @@ async function updateOrderStatus(orderDocId, newStatus) {
             const pRef = doc(db, "products", item.id);
             const pSnap = await transaction.get(pRef);
             if (pSnap.exists()) {
-              const currentStock = Number(pSnap.data().stockQuantity !== undefined ? pSnap.data().stockQuantity : (pSnap.data().stock || 0));
-              const newStock = currentStock + Number(item.qty || 1);
-              transaction.update(pRef, { stockQuantity: newStock, stock: newStock, updatedAt: serverTimestamp() });
+              const pData = pSnap.data();
+              if (!pData.unlimitedStock) {
+                const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : (pData.stock || 0));
+                const newStock = currentStock + Number(item.qty || 1);
+                transaction.update(pRef, { stockQuantity: newStock, stock: newStock, updatedAt: serverTimestamp() });
+              }
             }
           }
         }
@@ -605,13 +639,16 @@ async function updateOrderStatus(orderDocId, newStatus) {
             const pRef = doc(db, "products", item.id);
             const pSnap = await transaction.get(pRef);
             if (pSnap.exists()) {
-              const currentStock = Number(pSnap.data().stockQuantity !== undefined ? pSnap.data().stockQuantity : (pSnap.data().stock || 0));
-              const reqQty = Number(item.qty || 1);
-              if (currentStock < reqQty) {
-                throw new Error(`Cannot reactivate order. Insufficient stock for "${item.name || item.id}" (${currentStock} available, ${reqQty} required).`);
+              const pData = pSnap.data();
+              if (!pData.unlimitedStock) {
+                const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : (pData.stock || 0));
+                const reqQty = Number(item.qty || 1);
+                if (currentStock < reqQty) {
+                  throw new Error(`Cannot reactivate order. Insufficient stock for "${item.name || item.id}" (${currentStock} available, ${reqQty} required).`);
+                }
+                const newStock = currentStock - reqQty;
+                transaction.update(pRef, { stockQuantity: newStock, stock: newStock, updatedAt: serverTimestamp() });
               }
-              const newStock = currentStock - reqQty;
-              transaction.update(pRef, { stockQuantity: newStock, stock: newStock, updatedAt: serverTimestamp() });
             }
           }
         }
