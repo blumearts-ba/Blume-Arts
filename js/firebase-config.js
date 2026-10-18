@@ -37,8 +37,9 @@ export const DEFAULT_SETTINGS = {
   footerText: "Handmade With Love",
   upiId: "mohanraj88978@okaxis",
   upiQrImageUrl: "",
+  upiQrDriveFileId: "",
   upiQrUpdatedAt: "",
-  googleDriveFolderUrl: "",
-  googleDriveFolderId: "",
-  googleDriveScriptUrl: ""
+  googleDriveFolderUrl: "https://drive.google.com/drive/folders/1kL6LlDfF3Ej1rGgRBINFat3LjSmvFuJv?usp=drive_link",
+  googleDriveFolderId: "1kL6LlDfF3Ej1rGgRBINFat3LjSmvFuJv",
+  googleDriveScriptUrl: "https://script.google.com/macros/s/AKfycbxyyr0cgQVvp7jd7JL89-zPZblu0dpZYReTFVePWxzcqSM7SEHYSC9cFFKF_WXfj8ow/exec"
 };

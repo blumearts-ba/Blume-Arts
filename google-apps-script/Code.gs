@@ -116,38 +116,59 @@ function doPost(e) {
       });
     }
 
-    // 6. Sanitize File Name
+    // 6. Sanitize File Name & Type Routing
     var fileExt = allowedTypes[mimeType] || ".jpg";
     var cleanOrderId = orderId.replace(/[^a-zA-Z0-9_-]/g, "");
     var timestampStr = Utilities.formatDate(new Date(), "GMT+05:30", "yyyyMMdd_HHmmss");
-    var safeFileName = "PAYMENT_" + (cleanOrderId ? cleanOrderId + "_" : "") + timestampStr + fileExt;
+    var uploadType = (data.type || (orderId === "ADMIN_UPI_QR" ? "upi_qr" : "payment_screenshot")).toLowerCase();
+    var isUpiQr = uploadType === "upi_qr";
+
+    var safeFileName = isUpiQr
+      ? "UPI_QR_" + timestampStr + fileExt
+      : "PAYMENT_" + (cleanOrderId ? cleanOrderId + "_" : "") + timestampStr + fileExt;
 
     // 7. Create File in Folder
     var blob = Utilities.newBlob(decodedBytes, mimeType, safeFileName);
     var driveFile = folder.createFile(blob);
 
-    // 8. Set File Description with Order ID and Upload Metadata
+    // 8. Set File Description & Permissions
     var isoTime = new Date().toISOString();
-    driveFile.setDescription(
-      "Blume Arts Payment Screenshot\n" +
-      "Order ID: " + orderId + "\n" +
-      "File Name: " + safeFileName + "\n" +
-      "Uploaded At: " + isoTime + "\n" +
-      "Folder ID: " + folderId
-    );
-
-    // Note: The file remains private to the Google account owner by default.
+    if (isUpiQr) {
+      driveFile.setDescription(
+        "Blume Arts Recipient UPI QR Code\n" +
+        "Uploaded At: " + isoTime + "\n" +
+        "Folder ID: " + folderId
+      );
+      // Recipient UPI QR code needs public read so customers can scan/display it at checkout:
+      try {
+        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (shareErr) {}
+    } else {
+      driveFile.setDescription(
+        "Blume Arts Customer Payment Screenshot\n" +
+        "Order ID: " + orderId + "\n" +
+        "File Name: " + safeFileName + "\n" +
+        "Uploaded At: " + isoTime + "\n" +
+        "Folder ID: " + folderId
+      );
+      // Customer Payment Screenshots remain strictly PRIVATE to the store owner by default.
+    }
 
     var fileId = driveFile.getId();
     var webViewLink = driveFile.getUrl();
+    var directImageUrl = "https://lh3.googleusercontent.com/d/" + fileId;
+    var downloadUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
 
     return jsonResponse({
       success: true,
       provider: "google_drive",
+      type: uploadType,
       fileId: fileId,
       fileName: safeFileName,
       folderId: folderId,
       webViewLink: webViewLink,
+      directImageUrl: directImageUrl,
+      downloadUrl: downloadUrl,
       uploadTimestamp: isoTime,
       orderId: orderId
     });

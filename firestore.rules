@@ -14,29 +14,8 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Dedicated UPI QR code document (public get for checkout QR display, size-validated write)
-    match /settings/upi_qr {
-      allow get: if true;
-      allow list: if false;
-      allow write: if request.resource.data.imageBase64 is string
-                   && request.resource.data.imageBase64.size() < 950000;
-    }
-
-    // General store settings
     match /settings/{docId} {
       allow read, write: if true;
-    }
-
-    // Dedicated Payment Screenshots collection (Firestore-only Base64 storage)
-    // Individual get allowed (customer viewing order proof, admin verification)
-    // Public listing/scraping disallowed to protect customer payment privacy
-    // Create allowed only with string payload within safe document size limit (< 950KB)
-    match /payment_screenshots/{screenshotId} {
-      allow get: if true;
-      allow list: if false;
-      allow create: if request.resource.data.imageBase64 is string
-                    && request.resource.data.imageBase64.size() < 950000;
-      allow update, delete: if false;
     }
 
     match /adminUsers/{uid} {
