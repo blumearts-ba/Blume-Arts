@@ -1,8 +1,11 @@
-import { db, DEFAULT_SETTINGS } from "./firebase-config.js";
+import { db, storage, DEFAULT_SETTINGS } from "./firebase-config.js";
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc,
   query, orderBy, serverTimestamp, runTransaction
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {
+  ref, uploadBytesResumable, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
 
 const $ = (s) => document.querySelector(s);
 let PRODUCTS = [], CATEGORIES = [], ORDERS = [], REVIEWS = [];
@@ -1091,6 +1094,46 @@ function updateDriveConfigUI(folderUrl, scriptUrl) {
   }
 }
 
+let currentConfiguredQrUrl = "";
+let adminSelectedQrFile = null;
+
+function updateAdminUpiQrUI(qrUrl, updatedAt) {
+  currentConfiguredQrUrl = qrUrl || "";
+  const preview = $("#adminUpiQrPreview");
+  const emptyText = $("#adminUpiQrEmptyText");
+  const statusPill = $("#adminUpiQrStatusPill");
+  const metaText = $("#adminUpiQrMetaText");
+
+  if (qrUrl) {
+    if (preview) {
+      preview.src = qrUrl;
+      preview.style.display = "block";
+    }
+    if (emptyText) emptyText.style.display = "none";
+    if (statusPill) {
+      statusPill.textContent = "Active & Configured";
+      statusPill.style.background = "#def7ec";
+      statusPill.style.color = "#03543f";
+    }
+    if (metaText) {
+      const dt = updatedAt ? new Date(updatedAt).toLocaleDateString() : "Active";
+      metaText.textContent = `Configured QR (${dt})`;
+    }
+  } else {
+    if (preview) {
+      preview.src = "";
+      preview.style.display = "none";
+    }
+    if (emptyText) emptyText.style.display = "block";
+    if (statusPill) {
+      statusPill.textContent = "Not Configured";
+      statusPill.style.background = "#fde8e8";
+      statusPill.style.color = "#9b1c1c";
+    }
+    if (metaText) metaText.textContent = "Upload QR to enable UPI";
+  }
+}
+
 async function loadSettingsForm() {
   let s = { ...DEFAULT_SETTINGS };
   try {
@@ -1100,7 +1143,6 @@ async function loadSettingsForm() {
   if ($("#setBusinessName")) $("#setBusinessName").value = s.businessName || "";
   if ($("#setPhone")) $("#setPhone").value = s.phone || "";
   if ($("#setWhatsapp")) $("#setWhatsapp").value = s.whatsapp || "";
-  if ($("#setUpiId")) $("#setUpiId").value = s.upiId || DEFAULT_SETTINGS.upiId || "";
   if ($("#setEmail")) $("#setEmail").value = s.email || "";
   if ($("#setInstagram")) $("#setInstagram").value = s.instagram || "";
   if ($("#setInstagramUrl")) $("#setInstagramUrl").value = s.instagramUrl || "";
@@ -1111,8 +1153,165 @@ async function loadSettingsForm() {
   if ($("#setGoogleDriveFolderUrl")) $("#setGoogleDriveFolderUrl").value = s.googleDriveFolderUrl || "";
   if ($("#setGoogleDriveScriptUrl")) $("#setGoogleDriveScriptUrl").value = s.googleDriveScriptUrl || "";
 
-
+  updateAdminUpiQrUI(s.upiQrImageUrl || "", s.upiQrUpdatedAt || "");
   updateDriveConfigUI(s.googleDriveFolderUrl || "", s.googleDriveScriptUrl || "");
+}
+
+// Admin UPI QR Code File Input
+if ($("#adminUpiQrFileInput")) {
+  $("#adminUpiQrFileInput").addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    const statusMsg = $("#adminUpiQrStatusMsg");
+    const saveBtn = $("#btnSaveUpiQr");
+    const preview = $("#adminUpiQrPreview");
+    const emptyText = $("#adminUpiQrEmptyText");
+
+    if (!file) {
+      adminSelectedQrFile = null;
+      if (saveBtn) saveBtn.disabled = true;
+      updateAdminUpiQrUI(currentConfiguredQrUrl);
+      return;
+    }
+
+    const validTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      if (statusMsg) {
+        statusMsg.style.display = "block";
+        statusMsg.style.background = "#fde8e8";
+        statusMsg.style.color = "#9b1c1c";
+        statusMsg.style.border = "1px solid #f8b4b4";
+        statusMsg.textContent = "Invalid file type. Please select a PNG, JPG, or WebP image.";
+      }
+      e.target.value = "";
+      adminSelectedQrFile = null;
+      if (saveBtn) saveBtn.disabled = true;
+      updateAdminUpiQrUI(currentConfiguredQrUrl);
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      if (statusMsg) {
+        statusMsg.style.display = "block";
+        statusMsg.style.background = "#fde8e8";
+        statusMsg.style.color = "#9b1c1c";
+        statusMsg.style.border = "1px solid #f8b4b4";
+        statusMsg.textContent = "File exceeds 5MB limit. Please choose a smaller image.";
+      }
+      e.target.value = "";
+      adminSelectedQrFile = null;
+      if (saveBtn) saveBtn.disabled = true;
+      updateAdminUpiQrUI(currentConfiguredQrUrl);
+      return;
+    }
+
+    adminSelectedQrFile = file;
+    if (statusMsg) statusMsg.style.display = "none";
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save / Update UPI QR Code";
+    }
+
+    const reader = new FileReader();
+    reader.onload = (re) => {
+      if (preview) {
+        preview.src = re.target.result;
+        preview.style.display = "block";
+      }
+      if (emptyText) emptyText.style.display = "none";
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Admin UPI QR Code Upload / Save Handler
+if ($("#btnSaveUpiQr")) {
+  $("#btnSaveUpiQr").addEventListener("click", async () => {
+    if (sessionStorage.getItem("blume_admin_auth") !== "true") {
+      alert("Unauthorized: Only authenticated admins can modify store settings.");
+      return;
+    }
+
+    if (!adminSelectedQrFile) {
+      alert("Please select a QR code image to upload.");
+      return;
+    }
+
+    const btn = $("#btnSaveUpiQr");
+    const progressWrap = $("#adminUpiQrProgressBar");
+    const progressFill = $("#adminUpiQrProgressFill");
+    const statusMsg = $("#adminUpiQrStatusMsg");
+
+    btn.disabled = true;
+    btn.textContent = "Uploading QR Code...";
+    if (progressWrap) progressWrap.style.display = "block";
+    if (progressFill) progressFill.style.width = "0%";
+    if (statusMsg) statusMsg.style.display = "none";
+
+    const previousWorkingQr = currentConfiguredQrUrl;
+
+    try {
+      const ext = adminSelectedQrFile.name.split('.').pop() || "png";
+      const storagePath = `settings/upi_qr_${Date.now()}.${ext}`;
+      const storageRef = ref(storage, storagePath);
+
+      const uploadTask = uploadBytesResumable(storageRef, adminSelectedQrFile, {
+        contentType: adminSelectedQrFile.type
+      });
+
+      await new Promise((resolve, reject) => {
+        uploadTask.on(
+          "state_changed",
+          (snapshot) => {
+            const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            if (progressFill) progressFill.style.width = `${percent}%`;
+            btn.textContent = `Uploading... ${percent}%`;
+          },
+          (err) => reject(err),
+          () => resolve()
+        );
+      });
+
+      const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+
+      const updateData = {
+        upiQrImageUrl: downloadUrl,
+        upiQrPath: storageRef.fullPath,
+        upiQrUpdatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, "settings", "business"), updateData, { merge: true });
+
+      updateAdminUpiQrUI(downloadUrl, updateData.upiQrUpdatedAt);
+
+      if (statusMsg) {
+        statusMsg.style.display = "block";
+        statusMsg.style.background = "#def7ec";
+        statusMsg.style.color = "#03543f";
+        statusMsg.style.border = "1px solid #84e1bc";
+        statusMsg.innerHTML = "✓ UPI QR code saved successfully! Customers can now scan and download this QR code at checkout.";
+      }
+
+      adminSelectedQrFile = null;
+      if ($("#adminUpiQrFileInput")) $("#adminUpiQrFileInput").value = "";
+      btn.textContent = "Save / Update UPI QR Code";
+      btn.disabled = true;
+    } catch (err) {
+      console.error("UPI QR upload error:", err);
+      // Retain previous working QR if update fails
+      updateAdminUpiQrUI(previousWorkingQr);
+      if (statusMsg) {
+        statusMsg.style.display = "block";
+        statusMsg.style.background = "#fde8e8";
+        statusMsg.style.color = "#9b1c1c";
+        statusMsg.style.border = "1px solid #f8b4b4";
+        statusMsg.textContent = "Upload Failed: " + err.message + " (Retained previous working QR code).";
+      }
+      btn.disabled = false;
+      btn.textContent = "Retry QR Upload";
+    } finally {
+      if (progressWrap) progressWrap.style.display = "none";
+    }
+  });
 }
 
 if ($("#setGoogleDriveFolderUrl")) {
@@ -1218,7 +1417,6 @@ if ($("#saveSettingsBtn")) {
       businessName: $("#setBusinessName").value.trim(),
       phone: $("#setPhone").value.trim(),
       whatsapp: $("#setWhatsapp").value.trim(),
-      upiId: ($("#setUpiId")?.value.trim()) || DEFAULT_SETTINGS.upiId,
       email: $("#setEmail").value.trim(),
       instagram: $("#setInstagram").value.trim(),
       instagramUrl: $("#setInstagramUrl").value.trim(),

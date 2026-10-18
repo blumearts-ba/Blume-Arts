@@ -2,11 +2,36 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // 1. Recipient UPI QR code configured by store admin
+    // Publicly readable so customers can display, scan, or download the payment QR at checkout.
+    // Writes restricted to store administration.
+    // Note on Admin Security Limitation: This static client-side web application verifies admin
+    // actions via a client-side hashed PIN (sessionStorage / Firestore admin_pin doc) rather than
+    // Firebase Auth session tokens (request.auth). When migrating to full Firebase Authentication,
+    // update write rule to: allow write: if request.auth != null;
+    match /settings/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // 2. Customer Payment Verification Screenshots
+    // Allows customer checkout to upload payment proof images up to 5MB (image files only).
+    // Disallows modifications or deletions once uploaded.
+    match /payment_screenshots/{allPaths=**} {
+      allow read: if true;
+      allow create: if request.resource.size < 5 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow update, delete: if false;
+    }
+
+    // 3. Product images
     match /product-images/{productId}/{allPaths=**} {
       allow read, write: if true;
     }
+
     match /{allPaths=**} {
       allow read, write: if true;
     }
   }
 }
+

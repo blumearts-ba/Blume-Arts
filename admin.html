@@ -165,7 +165,6 @@
           <div class="form-group"><label>Business Name</label><input id="setBusinessName"></div>
           <div class="form-group"><label>Phone</label><input id="setPhone"></div>
           <div class="form-group"><label>WhatsApp Number (digits, with country code)</label><input id="setWhatsapp"></div>
-          <div class="form-group"><label>Merchant UPI ID (e.g. mohanraj88978@okaxis)</label><input id="setUpiId" placeholder="yourname@upi"></div>
           <div class="form-group"><label>Email</label><input id="setEmail"></div>
           <div class="form-group"><label>Instagram Username</label><input id="setInstagram"></div>
           <div class="form-group"><label>Instagram URL</label><input id="setInstagramUrl"></div>
@@ -175,6 +174,53 @@
           <div class="form-group full"><label>Footer Text</label><input id="setFooterText"></div>
         </div>
         <div class="form-actions"><button class="btn" id="saveSettingsBtn">Save Settings</button></div>
+      </div>
+
+      <!-- UPI QR CODE -->
+      <div class="card-table" style="padding:24px; margin-bottom:24px; border:1.5px solid #fbcfe8; background:linear-gradient(to bottom, #ffffff, #fff5f7);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+          <h3 style="font-family:'Playfair Display',serif; margin:0; display:flex; align-items:center; gap:8px; color:var(--brown);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            UPI QR Code
+          </h3>
+          <span class="pill" id="adminUpiQrStatusPill" style="font-size:.72rem;">Checking QR Status...</span>
+        </div>
+
+        <p style="font-size:.84rem; opacity:.85; margin-bottom:16px; line-height:1.5;">
+          Upload or replace the recipient UPI payment QR image. Customers will scan or download this static QR code at checkout to make payments.
+        </p>
+
+        <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
+          <!-- QR Preview Box -->
+          <div style="text-align:center; min-width:190px;">
+            <div style="width:190px; height:190px; border:1.5px dashed var(--dusty-rose); border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:8px; box-shadow:0 2px 8px rgba(0,0,0,0.05); padding:6px;">
+              <img id="adminUpiQrPreview" src="" alt="Configured UPI QR Code" style="width:100%; height:100%; object-fit:contain; display:none;">
+              <span id="adminUpiQrEmptyText" style="font-size:.76rem; color:#94a3b8; padding:12px; line-height:1.4;">No UPI QR image configured yet. Upload one below.</span>
+            </div>
+            <span id="adminUpiQrMetaText" style="font-size:.72rem; color:#64748b; display:block;"></span>
+          </div>
+
+          <!-- Upload Controls -->
+          <div style="flex:1; min-width:260px;">
+            <div class="form-group" style="margin-bottom:12px;">
+              <label for="adminUpiQrFileInput"><strong>Recipient UPI Payment QR Image</strong></label>
+              <input type="file" id="adminUpiQrFileInput" accept="image/png,image/jpeg,image/webp" style="margin-top:6px;">
+              <span style="font-size:.72rem; opacity:.75; display:block; margin-top:4px;">Supported formats: PNG, JPG, WebP (Max 5MB). File is securely stored in Firebase Storage.</span>
+            </div>
+
+            <!-- Upload Progress Bar -->
+            <div id="adminUpiQrProgressBar" style="display:none; width:100%; height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden; margin-top:10px;">
+              <div id="adminUpiQrProgressFill" style="width:0%; height:100%; background:var(--rose-deep); transition:width .2s;"></div>
+            </div>
+
+            <!-- Upload Status / Error Feedback -->
+            <div id="adminUpiQrStatusMsg" style="display:none; font-size:.82rem; margin-top:10px; padding:10px 12px; border-radius:8px;"></div>
+
+            <div style="margin-top:16px;">
+              <button type="button" class="btn" id="btnSaveUpiQr" disabled>Save / Update UPI QR Code</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- GOOGLE DRIVE PAYMENT SCREENSHOT DESTINATION -->
@@ -392,6 +438,6 @@
   <div class="modal" id="orderModalBody"></div>
 </div>
 
-<script type="module" src="js/admin.js?v=9.5"></script>
+<script type="module" src="js/admin.js?v=10.0"></script>
 </body>
 </html>

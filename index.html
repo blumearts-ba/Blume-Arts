@@ -575,69 +575,84 @@
             </label>
           </div>
 
-          <!-- Online UPI Multi-App & Dynamic QR Payment Panel -->
-          <div id="upiPaymentPanel" class="upi-payment-container" style="display:none;">
-            <!-- Recipient & Order Details (Transparent & Non-editable amount) -->
-            <div class="upi-recipient-box">
-              <div class="upi-recipient-meta">
-                <span class="label">Payment Recipient</span>
-                <span class="vpa" id="upiRecipientVpaDisplay">mohanraj88978@okaxis</span>
-                <span style="font-size:.72rem; opacity:.75;" id="upiRecipientNameDisplay">Blume Arts</span>
+          <!-- Online UPI Static QR & Mandatory Screenshot Payment Panel -->
+          <div id="upiPaymentPanel" class="upi-payment-container" style="display:none; margin-top:14px; background:var(--white); border:1.5px solid var(--beige); border-radius:14px; padding:18px;">
+            <!-- Amount & Pay Instructions Header -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; border-bottom:1px solid var(--beige); margin-bottom:14px;">
+              <div>
+                <span style="font-size:.72rem; text-transform:uppercase; letter-spacing:.5px; color:var(--brown); font-weight:600; display:block;">Total Amount to Pay</span>
+                <span style="font-size:1.25rem; font-weight:700; color:var(--rose-deep);" id="upiTotalDisplay">₹0</span>
               </div>
               <div style="text-align:right;">
-                <span class="label" style="display:block;">Payable Total</span>
-                <span style="font-size:1.15rem; font-weight:700; color:var(--rose-deep);" id="upiTotalDisplay">₹0</span>
-                <button type="button" id="btnCopyRecipientUpi" class="btn btn-outline btn-sm" style="font-size:.72rem; padding:3px 8px; margin-top:4px;">Copy UPI ID</button>
+                <span style="font-size:.72rem; text-transform:uppercase; letter-spacing:.5px; color:var(--brown); font-weight:600; display:block;">Payment Recipient</span>
+                <span style="font-size:.85rem; font-weight:600; color:var(--brown);" id="upiRecipientNameDisplay">Blume Arts</span>
               </div>
             </div>
 
-            <!-- Primary Universal UPI Intent (Opens default or app chooser on mobile) -->
-            <button type="button" id="btnPayUpiUniversal" class="btn btn-primary btn-block" style="padding:13px 18px; font-size:.95rem; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 14px rgba(184,80,107,0.25); cursor:pointer;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-              <span>Pay via Any UPI App</span>
-            </button>
-
-            <!-- Quick App Chooser Grid -->
-            <div style="margin:12px 0 6px 0; font-size:.72rem; opacity:.8; text-transform:uppercase; letter-spacing:.5px; font-weight:600; color:var(--brown);">Or choose your preferred UPI app:</div>
-            <div class="upi-app-grid">
-              <button type="button" class="upi-app-btn" id="btnPayGpay" title="Pay with Google Pay">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/></svg>
-                <span>Google Pay</span>
-              </button>
-              <button type="button" class="upi-app-btn" id="btnPayPhonePe" title="Pay with PhonePe">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#5f259f"/><path d="M14.8 7.5l-4.5 4.8h2.8c1.5 0 2.2.8 2.2 2s-.7 2-2.2 2H9.5v-10h5.3z" fill="#fff"/></svg>
-                <span>PhonePe</span>
-              </button>
-              <button type="button" class="upi-app-btn" id="btnPayPaytm" title="Pay with Paytm">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#00b9f1"/><path d="M7 10h10v4H7z" fill="#fff"/><circle cx="10" cy="12" r="1.5" fill="#002e6e"/><circle cx="14" cy="12" r="1.5" fill="#002e6e"/></svg>
-                <span>Paytm</span>
-              </button>
-              <button type="button" class="upi-app-btn" id="btnPayBhim" title="Pay with BHIM / Any UPI">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#00796b"/><path d="M8 8h4.5c1.4 0 2.5 1 2.5 2.2 0 .8-.5 1.5-1.2 1.9 1 .4 1.7 1.2 1.7 2.2 0 1.3-1.1 2.2-2.5 2.2H8V8z" fill="#fff"/></svg>
-                <span>BHIM / Other</span>
-              </button>
+            <!-- Error Notice if QR code is not configured by admin -->
+            <div id="upiMissingQrAlert" style="display:none; background:#fef2f2; border:1.5px solid #fca5a5; color:#991b1b; padding:12px 14px; border-radius:10px; font-size:.82rem; text-align:left; margin-bottom:14px;">
+              ⚠️ <strong>Online UPI Payment Unavailable:</strong> The recipient UPI QR code has not been configured by the store administrator. Please choose <strong>Cash on Delivery</strong> above to complete your order, or contact us.
             </div>
 
-            <!-- Dynamic UPI QR Code for Desktop or Scan-to-Pay -->
-            <div class="upi-qr-card">
-              <span style="font-size:.76rem; font-weight:700; color:var(--brown); display:block; margin-bottom:6px;">Scan to Pay with Any UPI App</span>
-              <img id="upiDynamicQrImg" src="" alt="Dynamic UPI QR Code" width="180" height="180">
-              <span style="font-size:.7rem; opacity:.75; display:block;">Use Google Pay, PhonePe, Paytm, BHIM, CRED or any bank app</span>
+            <!-- Static QR Image Display & Instructions (shown when QR is configured) -->
+            <div id="upiQrContentWrap" style="text-align:center;">
+              <div style="background:var(--ivory); border:1px solid var(--beige); border-radius:12px; padding:12px; margin-bottom:14px; font-size:.78rem; color:var(--brown); line-height:1.45; text-align:left;">
+                <strong>How to Pay:</strong>
+                <ol style="margin:6px 0 0 16px; padding:0;">
+                  <li>Scan this QR code using <strong>Google Pay, PhonePe, Paytm, BHIM</strong>, or any UPI app on another device.</li>
+                  <li>Or tap <strong>Download QR Code</strong> to save it and open the image directly in your UPI payment app.</li>
+                  <li>After paying, take a screenshot of the completed transaction and upload it below to submit your order.</li>
+                </ol>
+              </div>
+
+              <!-- Prominent Static QR Code Image -->
+              <div style="display:inline-block; margin:0 auto 12px auto; padding:10px; background:#ffffff; border-radius:14px; border:2px solid var(--dusty-rose); box-shadow:0 4px 14px rgba(0,0,0,0.06);">
+                <img id="customerUpiQrImg" src="" alt="UPI Payment QR Code" style="width:200px; height:200px; object-fit:contain; display:block; margin:0 auto; border-radius:8px;">
+              </div>
+
+              <!-- Download QR Code Button -->
+              <div>
+                <button type="button" class="btn btn-outline" id="btnDownloadUpiQr" style="font-size:.82rem; font-weight:600; padding:8px 16px; display:inline-flex; align-items:center; gap:8px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Download QR Code (PNG)</span>
+                </button>
+              </div>
             </div>
 
-            <!-- Payer UPI ID / UTR Input Field (Distinguishing Payer vs Recipient) -->
-            <div class="upi-payer-section">
-              <label for="upiPayerUtr" style="font-size:.78rem; font-weight:600; color:var(--brown); display:block; margin-bottom:4px;">
-                Your UPI ID or 12-Digit UTR / Transaction No. (Optional verification proof)
-              </label>
-              <input id="upiPayerUtr" type="text" placeholder="e.g. yourname@okhdfcbank or 12-digit UTR" style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px; font-size:.82rem; background:var(--white);">
-              <span style="font-size:.7rem; opacity:.75; display:block; margin-top:4px;">
-                You can pay using any eligible personal UPI ID or account.
-              </span>
-            </div>
+            <!-- Mandatory Payment Screenshot Upload Section -->
+            <div id="upiStepScreenshotWrap" style="margin-top:20px; padding-top:16px; border-top:1.5px dashed var(--beige); text-align:left;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                <label for="upiStepScreenshotFile" style="font-size:.84rem; font-weight:700; color:var(--brown); display:flex; align-items:center; gap:6px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--rose-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  <span>Upload Payment Screenshot (Mandatory)</span>
+                </label>
+                <span class="payment-badge" id="upiScreenshotStateBadge">Required</span>
+              </div>
+              <p style="font-size:.76rem; opacity:.85; margin-bottom:10px; color:var(--brown);">
+                Upload your payment confirmation screenshot. The <strong>Submit Order</strong> button will unlock once the image is successfully uploaded.
+              </p>
 
-            <div style="margin-top:12px; font-size:.72rem; color:#856404; background:#fff3cd; border:1px solid #ffeeba; border-radius:8px; padding:8px 10px; text-align:left;">
-              ⓘ <strong>Payment Verification Notice:</strong> Orders placed via UPI are saved as <em>Payment Review Pending</em> and verified against bank statements before shipping.
+              <input type="file" id="upiStepScreenshotFile" accept="image/jpeg,image/png,image/webp" style="width:100%; font-size:.8rem; background:var(--cream); border:1.5px dashed var(--dusty-rose); padding:10px; border-radius:10px; cursor:pointer;">
+              <span style="font-size:.7rem; opacity:.7; display:block; margin-top:4px;">Supported: JPG, PNG, WebP (Max 5MB)</span>
+
+              <!-- Image Preview -->
+              <div id="upiStepScreenshotPreviewWrap" style="display:none; margin-top:12px; position:relative; width:110px; height:110px; border-radius:10px; overflow:hidden; border:1px solid var(--beige); box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                <img id="upiStepScreenshotPreview" src="" alt="Screenshot Preview" style="width:100%; height:100%; object-fit:cover;">
+                <button type="button" id="btnRemoveUpiStepScreenshot" title="Remove screenshot" style="position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.65); color:#fff; border:none; border-radius:50%; width:22px; height:22px; font-size:.75rem; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+              </div>
+
+              <!-- Upload Progress Bar -->
+              <div id="upiStepUploadProgressBar" style="display:none; width:100%; height:7px; background:#e2e8f0; border-radius:4px; overflow:hidden; margin-top:10px;">
+                <div id="upiStepUploadProgressFill" style="width:0%; height:100%; background:var(--rose-deep); transition:width .2s;"></div>
+              </div>
+
+              <!-- Upload Status / Error Feedback -->
+              <div id="upiStepUploadStatus" style="display:none; font-size:.78rem; margin-top:8px; padding:8px 12px; border-radius:8px;"></div>
+
+              <!-- Submit Order Button (DISABLED until valid upload) -->
+              <button type="button" class="btn btn-primary btn-block" id="btnSubmitUpiOrder" disabled style="margin-top:16px; padding:13px 18px; font-size:.95rem; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                <span>Submit Order & Open WhatsApp</span>
+              </button>
             </div>
           </div>
         </div>
@@ -666,67 +681,11 @@
         <span class="payment-badge" id="confirmPaymentStatusBadge">Pending</span>
       </div>
 
-      <!-- UPI Payment Screenshot Upload Section (Mandatory for UPI) -->
-      <div id="confirmScreenshotSection" style="display:none; background:var(--cream); border:1.5px solid var(--beige); border-radius:14px; padding:16px; margin-bottom:16px; text-align:left;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--rose-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <strong style="font-size:.88rem; color:var(--brown);" id="confScreenshotHeader">Payment Screenshot (Mandatory)</strong>
-        </div>
-        <p style="font-size:.76rem; opacity:.85; margin-bottom:10px;" id="confScreenshotDesc">
-          Please upload your payment screenshot from Google Pay, PhonePe, Paytm, etc. This is required before you can submit your order.
-        </p>
-
-        <div id="confScreenshotFormWrap">
-          <input type="file" id="confScreenshotFile" accept="image/jpeg,image/png,image/webp" style="font-size:.78rem; width:100%; background:var(--white); border:1.5px dashed var(--beige); padding:8px; border-radius:10px; cursor:pointer;">
-          <span style="font-size:.7rem; opacity:.7; display:block; margin-top:4px;">Accepts JPG, PNG, or WebP (Max 5MB)</span>
-
-          <div id="confScreenshotPreviewWrap" style="display:none; margin-top:10px; position:relative; width:100px; height:100px; border-radius:10px; overflow:hidden; border:1px solid var(--beige);">
-            <img id="confScreenshotPreview" src="" alt="Screenshot Preview" style="width:100%; height:100%; object-fit:cover;">
-            <button type="button" id="btnRemoveConfScreenshot" style="position:absolute; top:3px; right:3px; background:rgba(0,0,0,0.65); color:#fff; border:none; border-radius:50%; width:20px; height:20px; font-size:.7rem; cursor:pointer;">✕</button>
-          </div>
-
-          <button type="button" class="btn btn-primary btn-block btn-sm" id="btnUploadConfScreenshot" style="margin-top:10px; font-size:.82rem; font-weight:600; display:none;">
-            Upload / Save Screenshot
-          </button>
-        </div>
-
-        <div id="confScreenshotSuccessMsg" style="display:none; background:#def7ec; border:1px solid #84e1bc; color:#03543f; padding:10px 12px; border-radius:8px; font-size:.78rem; text-align:center;">
-          ✓ Screenshot uploaded successfully!
-        </div>
-
-        <!-- Submit Order button enabled only after screenshot is successfully uploaded -->
-        <button type="button" class="btn btn-primary btn-block" id="btnSubmitOrderAfterScreenshot" style="display:none; margin-top:12px; font-weight:700; font-size:.9rem; padding:11px 16px;">
-          Submit Order & Open WhatsApp ➔
-        </button>
-      </div>
-
       <!-- Final Actions (Open WhatsApp on the left, Continue Shopping on the right) -->
       <div class="confirm-actions" id="confirmActionsWrap">
         <button class="btn btn-primary" id="openWhatsappBtn">Open WhatsApp</button>
         <button class="btn btn-outline" id="continueShoppingBtn">Continue Shopping</button>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- UPI FALLBACK MODAL -->
-<div class="overlay" id="upiFallbackModalOverlay">
-  <div class="modal" style="max-width:420px; text-align:center;">
-    <h3 style="font-family:var(--serif); margin-bottom:8px; color:var(--rose-deep);">Pay with Any UPI App</h3>
-    <p style="font-size:.82rem; opacity:.85; margin-bottom:14px;">
-      If your UPI app did not launch automatically, scan the QR code below or send payment directly to our recipient UPI ID:
-    </p>
-    <div style="background:var(--cream); border:1px solid var(--beige); border-radius:10px; padding:12px; margin-bottom:14px;">
-      <div style="font-size:.72rem; opacity:.7;">Recipient UPI ID</div>
-      <strong id="fallbackUpiIdDisplay" style="font-size:1.05rem; font-family:monospace; color:var(--brown);">mohanraj88978@okaxis</strong>
-      <div style="font-size:.75rem; margin-top:6px; color:var(--rose-deep); font-weight:600;">Amount: ₹<span id="fallbackUpiAmountDisplay">0</span></div>
-    </div>
-    <div id="fallbackQrWrap" style="margin-bottom:14px; text-align:center;">
-      <img id="fallbackQrImg" src="" alt="UPI QR Code" style="width:160px; height:160px; border-radius:10px; border:1px solid var(--beige); background:#fff; padding:6px; display:inline-block;">
-    </div>
-    <div style="display:flex; gap:10px; justify-content:center;">
-      <button type="button" class="btn btn-outline btn-sm" id="btnCopyFallbackUpi">Copy UPI ID</button>
-      <button type="button" class="btn btn-primary btn-sm" id="btnCloseFallbackUpi">Close</button>
     </div>
   </div>
 </div>
@@ -896,7 +855,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="js/app.js?v=9.8"></script>
+<script type="module" src="js/app.js?v=10.0"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

@@ -8,6 +8,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyCQsW6ZEpahRVIxzCPft2nGQ6BacrdWcjY",
@@ -22,6 +23,7 @@ export const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Fallback settings used until settings/business loads from Firestore
 export const DEFAULT_SETTINGS = {
@@ -36,6 +38,9 @@ export const DEFAULT_SETTINGS = {
   deliveryInfo: "Delivery details shared after order confirmation on WhatsApp.",
   footerText: "Handmade With Love",
   upiId: "mohanraj88978@okaxis",
+  upiQrImageUrl: "",
+  upiQrPath: "",
+  upiQrUpdatedAt: "",
   googleDriveFolderUrl: "",
   googleDriveFolderId: "",
   googleDriveScriptUrl: ""

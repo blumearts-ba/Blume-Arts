@@ -1,4 +1,4 @@
-const CACHE_NAME = "blume-arts-v29";
+const CACHE_NAME = "blume-arts-v30";
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
