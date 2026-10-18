@@ -1980,7 +1980,8 @@ async function submitOrder(customPaymentMethod = null) {
       const orderNote = encodeURIComponent(`Blume Arts Order ${orderId}`);
       const orderRef = encodeURIComponent(orderId);
 
-      const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}&tr=${orderRef}`;
+      // Clean universal UPI link (supported across GPay, PhonePe, Paytm, and bank apps)
+      const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
 
       // Open UPI deep link directly on click context
       const launchTime = Date.now();
