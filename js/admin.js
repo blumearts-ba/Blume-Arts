@@ -1,11 +1,8 @@
-import { db, storage, DEFAULT_SETTINGS } from "./firebase-config.js";
+import { db, DEFAULT_SETTINGS } from "./firebase-config.js";
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc,
   query, orderBy, serverTimestamp, runTransaction
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import {
-  ref, uploadBytesResumable, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
 
 const $ = (s) => document.querySelector(s);
 let PRODUCTS = [], CATEGORIES = [], ORDERS = [], REVIEWS = [];
@@ -1096,8 +1093,100 @@ function updateDriveConfigUI(folderUrl, scriptUrl) {
 
 let currentConfiguredQrUrl = "";
 let adminSelectedQrFile = null;
+let adminSelectedQrData = null;
+let isSavingUpiQr = false;
 
-function updateAdminUpiQrUI(qrUrl, updatedAt) {
+// Specialized client-side compression for UPI QR Code images to guarantee scannability & fit Firestore 1MB document limit
+async function compressQrCodeImage(file) {
+  return new Promise((resolve, reject) => {
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!file || !validTypes.includes(file.type.toLowerCase())) {
+      return reject(new Error("Invalid file type. Please upload a PNG, JPG, or WebP QR code image."));
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read image file data."));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Unable to decode image. Please check the file."));
+      img.onload = () => {
+        // Standard QR codes are high contrast and sharp.
+        // Scale to a maximum dimension of 600px, which retains tack-sharp scanning while keeping PNG payload around 30KB - 90KB.
+        const MAX = 600;
+        let w = img.width;
+        let h = img.height;
+        if (w > h && w > MAX) {
+          h = Math.round((h * MAX) / w);
+          w = MAX;
+        } else if (h > MAX) {
+          w = Math.round((w * MAX) / h);
+          h = MAX;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // PNG is mathematically lossless and optimal for square QR modules
+        let dataUrl = canvas.toDataURL("image/png");
+        let mimeType = "image/png";
+        let head = "data:image/png;base64,";
+        let b64 = dataUrl.startsWith(head) ? dataUrl.slice(head.length) : dataUrl;
+        let byteSize = Math.round((b64.length * 3) / 4);
+
+        // If PNG exceeds 650KB (rare, but possible with high-noise backgrounds), fall back to crisp JPEG at 0.90 quality
+        if (byteSize > 650000) {
+          dataUrl = canvas.toDataURL("image/jpeg", 0.90);
+          mimeType = "image/jpeg";
+          head = "data:image/jpeg;base64,";
+          b64 = dataUrl.startsWith(head) ? dataUrl.slice(head.length) : dataUrl;
+          byteSize = Math.round((b64.length * 3) / 4);
+        }
+
+        // Second pass: if still > 780KB, resize to 450x450
+        if (byteSize > 780000) {
+          const canvas2 = document.createElement("canvas");
+          const w2 = Math.min(w, 450);
+          const h2 = Math.min(h, 450);
+          canvas2.width = w2;
+          canvas2.height = h2;
+          const ctx2 = canvas2.getContext("2d");
+          ctx2.imageSmoothingEnabled = true;
+          ctx2.imageSmoothingQuality = "high";
+          ctx2.drawImage(img, 0, 0, w2, h2);
+          dataUrl = canvas2.toDataURL("image/jpeg", 0.85);
+          mimeType = "image/jpeg";
+          head = "data:image/jpeg;base64,";
+          b64 = dataUrl.startsWith(head) ? dataUrl.slice(head.length) : dataUrl;
+          byteSize = Math.round((b64.length * 3) / 4);
+          w = w2;
+          h = h2;
+        }
+
+        // Safe Firestore document limit validation (< 800 KB safe ceiling)
+        if (byteSize > 800000) {
+          return reject(new Error("QR code image exceeds the safe database document limit (800KB). Please upload a smaller or cropped QR code."));
+        }
+
+        resolve({
+          dataUrl,
+          byteSize,
+          width: w,
+          height: h,
+          mimeType
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function updateAdminUpiQrUI(qrUrl, updatedAt, fileSize) {
   currentConfiguredQrUrl = qrUrl || "";
   const preview = $("#adminUpiQrPreview");
   const emptyText = $("#adminUpiQrEmptyText");
@@ -1116,8 +1205,9 @@ function updateAdminUpiQrUI(qrUrl, updatedAt) {
       statusPill.style.color = "#03543f";
     }
     if (metaText) {
-      const dt = updatedAt ? new Date(updatedAt).toLocaleDateString() : "Active";
-      metaText.textContent = `Configured QR (${dt})`;
+      const dt = updatedAt ? new Date(updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Configured";
+      const sizeStr = fileSize ? ` • ${(fileSize / 1024).toFixed(1)} KB` : "";
+      metaText.textContent = `Configured QR (${dt}${sizeStr})`;
     }
   } else {
     if (preview) {
@@ -1139,7 +1229,8 @@ async function loadSettingsForm() {
   try {
     const snap = await getDoc(doc(db, "settings", "business"));
     if (snap.exists()) s = { ...s, ...snap.data() };
-  } catch (e) { console.warn(e.message); }
+  } catch (e) { console.warn("Business settings load:", e.message); }
+
   if ($("#setBusinessName")) $("#setBusinessName").value = s.businessName || "";
   if ($("#setPhone")) $("#setPhone").value = s.phone || "";
   if ($("#setWhatsapp")) $("#setWhatsapp").value = s.whatsapp || "";
@@ -1153,13 +1244,32 @@ async function loadSettingsForm() {
   if ($("#setGoogleDriveFolderUrl")) $("#setGoogleDriveFolderUrl").value = s.googleDriveFolderUrl || "";
   if ($("#setGoogleDriveScriptUrl")) $("#setGoogleDriveScriptUrl").value = s.googleDriveScriptUrl || "";
 
-  updateAdminUpiQrUI(s.upiQrImageUrl || "", s.upiQrUpdatedAt || "");
+  // Dedicated Firestore document: settings/upi_qr
+  let qrDoc = null;
+  try {
+    const qrSnap = await getDoc(doc(db, "settings", "upi_qr"));
+    if (qrSnap.exists()) {
+      qrDoc = qrSnap.data();
+    }
+  } catch (err) {
+    console.warn("Could not load settings/upi_qr:", err.message);
+  }
+
+  if (qrDoc && qrDoc.imageBase64) {
+    const updateTime = qrDoc.updatedAt?.toDate ? qrDoc.updatedAt.toDate().toISOString() : s.upiQrUpdatedAt;
+    updateAdminUpiQrUI(qrDoc.imageBase64, updateTime, qrDoc.fileSize);
+  } else if (s.upiQrImageUrl) {
+    updateAdminUpiQrUI(s.upiQrImageUrl, s.upiQrUpdatedAt);
+  } else {
+    updateAdminUpiQrUI("", "");
+  }
+
   updateDriveConfigUI(s.googleDriveFolderUrl || "", s.googleDriveScriptUrl || "");
 }
 
 // Admin UPI QR Code File Input
 if ($("#adminUpiQrFileInput")) {
-  $("#adminUpiQrFileInput").addEventListener("change", (e) => {
+  $("#adminUpiQrFileInput").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     const statusMsg = $("#adminUpiQrStatusMsg");
     const saveBtn = $("#btnSaveUpiQr");
@@ -1168,6 +1278,7 @@ if ($("#adminUpiQrFileInput")) {
 
     if (!file) {
       adminSelectedQrFile = null;
+      adminSelectedQrData = null;
       if (saveBtn) saveBtn.disabled = true;
       updateAdminUpiQrUI(currentConfiguredQrUrl);
       return;
@@ -1184,46 +1295,85 @@ if ($("#adminUpiQrFileInput")) {
       }
       e.target.value = "";
       adminSelectedQrFile = null;
+      adminSelectedQrData = null;
       if (saveBtn) saveBtn.disabled = true;
       updateAdminUpiQrUI(currentConfiguredQrUrl);
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 8 * 1024 * 1024) {
       if (statusMsg) {
         statusMsg.style.display = "block";
         statusMsg.style.background = "#fde8e8";
         statusMsg.style.color = "#9b1c1c";
         statusMsg.style.border = "1px solid #f8b4b4";
-        statusMsg.textContent = "File exceeds 5MB limit. Please choose a smaller image.";
+        statusMsg.textContent = "File exceeds 8MB. Please choose a reasonable size image.";
       }
       e.target.value = "";
       adminSelectedQrFile = null;
+      adminSelectedQrData = null;
       if (saveBtn) saveBtn.disabled = true;
       updateAdminUpiQrUI(currentConfiguredQrUrl);
       return;
     }
 
-    adminSelectedQrFile = file;
-    if (statusMsg) statusMsg.style.display = "none";
+    if (statusMsg) {
+      statusMsg.style.display = "block";
+      statusMsg.style.background = "#e0f2fe";
+      statusMsg.style.color = "#0369a1";
+      statusMsg.style.border = "1px solid #bae6fd";
+      statusMsg.textContent = "Optimizing QR code image for database storage...";
+    }
     if (saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.textContent = "Save / Update UPI QR Code";
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Processing Image...";
     }
 
-    const reader = new FileReader();
-    reader.onload = (re) => {
+    try {
+      const processed = await compressQrCodeImage(file);
+      adminSelectedQrFile = file;
+      adminSelectedQrData = processed;
+
       if (preview) {
-        preview.src = re.target.result;
+        preview.src = processed.dataUrl;
         preview.style.display = "block";
       }
       if (emptyText) emptyText.style.display = "none";
-    };
-    reader.readAsDataURL(file);
+
+      const kbSize = (processed.byteSize / 1024).toFixed(1);
+      if (statusMsg) {
+        statusMsg.style.display = "block";
+        statusMsg.style.background = "#def7ec";
+        statusMsg.style.color = "#03543f";
+        statusMsg.style.border = "1px solid #84e1bc";
+        statusMsg.innerHTML = `✓ QR Code ready: <strong>${kbSize} KB</strong> (100% valid for Firestore 1MB document limit). Click Save below to store.`;
+      }
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save / Update UPI QR Code";
+      }
+    } catch (err) {
+      console.error("QR Code compression error:", err);
+      adminSelectedQrFile = null;
+      adminSelectedQrData = null;
+      if (statusMsg) {
+        statusMsg.style.display = "block";
+        statusMsg.style.background = "#fde8e8";
+        statusMsg.style.color = "#9b1c1c";
+        statusMsg.style.border = "1px solid #f8b4b4";
+        statusMsg.textContent = err.message || "Failed to process QR image.";
+      }
+      e.target.value = "";
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Save / Update UPI QR Code";
+      }
+      updateAdminUpiQrUI(currentConfiguredQrUrl);
+    }
   });
 }
 
-// Admin UPI QR Code Upload / Save Handler
+// Admin UPI QR Code Upload / Save Handler (Firestore ONLY)
 if ($("#btnSaveUpiQr")) {
   $("#btnSaveUpiQr").addEventListener("click", async () => {
     if (sessionStorage.getItem("blume_admin_auth") !== "true") {
@@ -1231,10 +1381,13 @@ if ($("#btnSaveUpiQr")) {
       return;
     }
 
-    if (!adminSelectedQrFile) {
-      alert("Please select a QR code image to upload.");
+    if (!adminSelectedQrData || !adminSelectedQrData.dataUrl) {
+      alert("Please select a valid QR code image first.");
       return;
     }
+
+    if (isSavingUpiQr) return;
+    isSavingUpiQr = true;
 
     const btn = $("#btnSaveUpiQr");
     const progressWrap = $("#adminUpiQrProgressBar");
@@ -1242,61 +1395,62 @@ if ($("#btnSaveUpiQr")) {
     const statusMsg = $("#adminUpiQrStatusMsg");
 
     btn.disabled = true;
-    btn.textContent = "Uploading QR Code...";
+    btn.textContent = "Saving to Database...";
     if (progressWrap) progressWrap.style.display = "block";
-    if (progressFill) progressFill.style.width = "0%";
-    if (statusMsg) statusMsg.style.display = "none";
+    if (progressFill) progressFill.style.width = "40%";
+    if (statusMsg) {
+      statusMsg.style.display = "block";
+      statusMsg.style.background = "#e0f2fe";
+      statusMsg.style.color = "#0369a1";
+      statusMsg.style.border = "1px solid #bae6fd";
+      statusMsg.textContent = "Writing QR code to Firestore database...";
+    }
 
     const previousWorkingQr = currentConfiguredQrUrl;
 
     try {
-      const ext = adminSelectedQrFile.name.split('.').pop() || "png";
-      const storagePath = `settings/upi_qr_${Date.now()}.${ext}`;
-      const storageRef = ref(storage, storagePath);
-
-      const uploadTask = uploadBytesResumable(storageRef, adminSelectedQrFile, {
-        contentType: adminSelectedQrFile.type
-      });
-
-      await new Promise((resolve, reject) => {
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-            if (progressFill) progressFill.style.width = `${percent}%`;
-            btn.textContent = `Uploading... ${percent}%`;
-          },
-          (err) => reject(err),
-          () => resolve()
-        );
-      });
-
-      const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-
-      const updateData = {
-        upiQrImageUrl: downloadUrl,
-        upiQrPath: storageRef.fullPath,
-        upiQrUpdatedAt: new Date().toISOString()
+      // 1. Save Base64 data directly into dedicated document: settings/upi_qr
+      const qrDocRef = doc(db, "settings", "upi_qr");
+      const qrPayload = {
+        imageBase64: adminSelectedQrData.dataUrl,
+        contentType: adminSelectedQrData.mimeType,
+        fileName: adminSelectedQrFile?.name || "upi-qr.png",
+        fileSize: adminSelectedQrData.byteSize,
+        dimensions: `${adminSelectedQrData.width}x${adminSelectedQrData.height}`,
+        updatedAt: serverTimestamp()
       };
 
-      await setDoc(doc(db, "settings", "business"), updateData, { merge: true });
+      await setDoc(qrDocRef, qrPayload);
 
-      updateAdminUpiQrUI(downloadUrl, updateData.upiQrUpdatedAt);
+      if (progressFill) progressFill.style.width = "85%";
+
+      // 2. Update settings/business with metadata reference only (keeps settings/business tiny)
+      const nowIso = new Date().toISOString();
+      await setDoc(doc(db, "settings", "business"), {
+        hasUpiQr: true,
+        upiQrUpdatedAt: nowIso
+      }, { merge: true });
+
+      if (progressFill) progressFill.style.width = "100%";
+
+      currentConfiguredQrUrl = adminSelectedQrData.dataUrl;
+      updateAdminUpiQrUI(currentConfiguredQrUrl, nowIso, adminSelectedQrData.byteSize);
 
       if (statusMsg) {
         statusMsg.style.display = "block";
         statusMsg.style.background = "#def7ec";
         statusMsg.style.color = "#03543f";
         statusMsg.style.border = "1px solid #84e1bc";
-        statusMsg.innerHTML = "✓ UPI QR code saved successfully! Customers can now scan and download this QR code at checkout.";
+        statusMsg.innerHTML = "✓ UPI QR code saved successfully in Firestore database! Customers can now scan and download this QR code at checkout.";
       }
 
       adminSelectedQrFile = null;
+      adminSelectedQrData = null;
       if ($("#adminUpiQrFileInput")) $("#adminUpiQrFileInput").value = "";
       btn.textContent = "Save / Update UPI QR Code";
       btn.disabled = true;
     } catch (err) {
-      console.error("UPI QR upload error:", err);
+      console.error("UPI QR save error:", err);
       // Retain previous working QR if update fails
       updateAdminUpiQrUI(previousWorkingQr);
       if (statusMsg) {
@@ -1304,11 +1458,12 @@ if ($("#btnSaveUpiQr")) {
         statusMsg.style.background = "#fde8e8";
         statusMsg.style.color = "#9b1c1c";
         statusMsg.style.border = "1px solid #f8b4b4";
-        statusMsg.textContent = "Upload Failed: " + err.message + " (Retained previous working QR code).";
+        statusMsg.textContent = "Database Save Failed: " + err.message + " (Retained previous working QR code).";
       }
       btn.disabled = false;
-      btn.textContent = "Retry QR Upload";
+      btn.textContent = "Retry Saving QR Code";
     } finally {
+      isSavingUpiQr = false;
       if (progressWrap) progressWrap.style.display = "none";
     }
   });

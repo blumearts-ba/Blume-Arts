@@ -1,11 +1,8 @@
-import { db, storage, DEFAULT_SETTINGS } from "./firebase-config.js";
+import { db, DEFAULT_SETTINGS } from "./firebase-config.js";
 import {
   collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc,
   runTransaction, query, where, getDocs, updateDoc, setDoc, orderBy, arrayUnion
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import {
-  ref, uploadBytesResumable, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
 
 // ---------- EMOJI SANITIZER FOR ZERO EMOJI COMPLIANCE ----------
 function removeEmojis(str) {
@@ -1521,13 +1518,112 @@ if ($("#btnChoiceManual")) {
   });
 }
 
-let currentUpiScreenshotUrl = null;
-let currentUpiScreenshotPath = null;
+let cachedUpiQrData = null;
+
+async function getOrFetchUpiQr() {
+  if (cachedUpiQrData && cachedUpiQrData.imageBase64) {
+    return cachedUpiQrData;
+  }
+  try {
+    const qrSnap = await getDoc(doc(db, "settings", "upi_qr"));
+    if (qrSnap.exists() && qrSnap.data()?.imageBase64) {
+      cachedUpiQrData = qrSnap.data();
+      return cachedUpiQrData;
+    }
+  } catch (e) {
+    console.warn("Could not fetch settings/upi_qr:", e.message);
+  }
+  if (SETTINGS.upiQrImageUrl) {
+    return { imageBase64: SETTINGS.upiQrImageUrl };
+  }
+  return null;
+}
+
+// Client-side compression for Payment Screenshots to fit within Firestore's 1MB document limit
+async function compressScreenshotForFirestore(file) {
+  return new Promise((resolve, reject) => {
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!file || !validTypes.includes(file.type.toLowerCase())) {
+      return reject(new Error("Please upload a valid image file (JPG, PNG, or WebP)."));
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Unable to read screenshot file data."));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Unable to parse screenshot image."));
+      img.onload = () => {
+        // High quality scaling: max dimension 1000px.
+        // For a typical phone screen (1080x2400), this resizes to 450x1000, which keeps UTR numbers, amounts, and bank reference lines completely sharp and legible.
+        const MAX = 1000;
+        let w = img.width;
+        let h = img.height;
+        if (w > h && w > MAX) {
+          h = Math.round((h * MAX) / w);
+          w = MAX;
+        } else if (h > MAX) {
+          w = Math.round((w * MAX) / h);
+          h = MAX;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // JPEG at 0.78 quality preserves high fidelity text while keeping file size ~100KB - 220KB
+        let dataUrl = canvas.toDataURL("image/jpeg", 0.78);
+        let head = "data:image/jpeg;base64,";
+        let b64 = dataUrl.startsWith(head) ? dataUrl.slice(head.length) : dataUrl;
+        let byteSize = Math.round((b64.length * 3) / 4);
+
+        // Second pass: if byteSize > 700KB, reduce quality to 0.68 and resize
+        if (byteSize > 700000) {
+          const canvas2 = document.createElement("canvas");
+          const w2 = Math.round(w * 0.8);
+          const h2 = Math.round(h * 0.8);
+          canvas2.width = w2;
+          canvas2.height = h2;
+          const ctx2 = canvas2.getContext("2d");
+          ctx2.imageSmoothingEnabled = true;
+          ctx2.imageSmoothingQuality = "high";
+          ctx2.drawImage(img, 0, 0, w2, h2);
+          dataUrl = canvas2.toDataURL("image/jpeg", 0.68);
+          b64 = dataUrl.startsWith(head) ? dataUrl.slice(head.length) : dataUrl;
+          byteSize = Math.round((b64.length * 3) / 4);
+          w = w2;
+          h = h2;
+        }
+
+        // Safe Firestore document limit validation (< 800 KB safe ceiling)
+        if (byteSize > 800000) {
+          return reject(new Error("Screenshot exceeds safe database size (800KB). Please crop unnecessary borders and try again."));
+        }
+
+        resolve({
+          dataUrl,
+          byteSize,
+          mimeType: "image/jpeg",
+          width: w,
+          height: h
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+let currentUpiScreenshotDocId = null;
+let currentUpiScreenshotDataUrl = null;
 let currentUpiScreenshotName = null;
 let currentCheckoutOrderId = null;
 let isUploadingStepScreenshot = false;
 
-function refreshUpiStepUI() {
+async function refreshUpiStepUI() {
   const qrImg = $("#customerUpiQrImg");
   const missingAlert = $("#upiMissingQrAlert");
   const qrWrap = $("#upiQrContentWrap");
@@ -1541,7 +1637,8 @@ function refreshUpiStepUI() {
   if (totalDisplay) totalDisplay.textContent = money(total);
   if (recipientDisplay) recipientDisplay.textContent = SETTINGS.businessName || "Blume Arts";
 
-  const configuredQr = SETTINGS.upiQrImageUrl || "";
+  const qrData = await getOrFetchUpiQr();
+  const configuredQr = qrData?.imageBase64 || "";
 
   if (configuredQr) {
     if (missingAlert) missingAlert.style.display = "none";
@@ -1551,7 +1648,7 @@ function refreshUpiStepUI() {
     if (fileInput) fileInput.disabled = false;
 
     if (submitBtn) {
-      if (currentUpiScreenshotUrl) {
+      if (currentUpiScreenshotDocId) {
         submitBtn.disabled = false;
         submitBtn.textContent = "Submit Order & Open WhatsApp";
       } else {
@@ -1573,7 +1670,8 @@ function refreshUpiStepUI() {
 }
 
 async function downloadUpiQrImage() {
-  const qrUrl = SETTINGS.upiQrImageUrl;
+  const qrData = await getOrFetchUpiQr();
+  const qrUrl = qrData?.imageBase64 || "";
   if (!qrUrl) {
     toast("No UPI QR code configured.");
     return;
@@ -1582,9 +1680,24 @@ async function downloadUpiQrImage() {
 
   try {
     toast("Downloading QR code...");
-    const res = await fetch(qrUrl, { mode: "cors" });
-    if (!res.ok) throw new Error("Network response error " + res.status);
-    const blob = await res.blob();
+    let blob;
+    if (qrUrl.startsWith("data:")) {
+      const parts = qrUrl.split(",");
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : "image/png";
+      const bstr = atob(parts[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      blob = new Blob([u8arr], { type: mime });
+    } else {
+      const res = await fetch(qrUrl, { mode: "cors" });
+      if (!res.ok) throw new Error("Network response error " + res.status);
+      blob = await res.blob();
+    }
+
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = blobUrl;
@@ -1669,8 +1782,8 @@ function setupStepScreenshotControls() {
   const submitBtn = $("#btnSubmitUpiOrder");
 
   function resetScreenshotUI() {
-    currentUpiScreenshotUrl = null;
-    currentUpiScreenshotPath = null;
+    currentUpiScreenshotDocId = null;
+    currentUpiScreenshotDataUrl = null;
     currentUpiScreenshotName = null;
     if (fileInput) fileInput.value = "";
     if (previewWrap) previewWrap.style.display = "none";
@@ -1719,13 +1832,13 @@ function setupStepScreenshotControls() {
         return;
       }
 
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > 15 * 1024 * 1024) {
         if (statusMsg) {
           statusMsg.style.display = "block";
           statusMsg.style.background = "#fde8e8";
           statusMsg.style.color = "#9b1c1c";
           statusMsg.style.border = "1px solid #f8b4b4";
-          statusMsg.textContent = "Screenshot exceeds 5MB limit. Please choose a smaller image.";
+          statusMsg.textContent = "Screenshot exceeds 15MB limit. Please choose a smaller image.";
         }
         resetScreenshotUI();
         return;
@@ -1739,24 +1852,24 @@ function setupStepScreenshotControls() {
       };
       reader.readAsDataURL(file);
 
-      // Start upload to Firebase Storage
+      // Start compression & database write
       isUploadingStepScreenshot = true;
       if (progressBar) progressBar.style.display = "block";
-      if (progressFill) progressFill.style.width = "0%";
+      if (progressFill) progressFill.style.width = "30%";
       if (statusMsg) {
         statusMsg.style.display = "block";
         statusMsg.style.background = "#e0f2fe";
         statusMsg.style.color = "#0369a1";
         statusMsg.style.border = "1px solid #bae6fd";
-        statusMsg.textContent = "Uploading screenshot to secure storage...";
+        statusMsg.textContent = "Optimizing screenshot for database storage...";
       }
       if (stateBadge) {
-        stateBadge.textContent = "Uploading...";
+        stateBadge.textContent = "Compressing...";
         stateBadge.className = "payment-badge";
       }
       if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = "Uploading Screenshot...";
+        submitBtn.textContent = "Processing Screenshot...";
       }
 
       if (!currentCheckoutOrderId) {
@@ -1764,39 +1877,38 @@ function setupStepScreenshotControls() {
       }
 
       try {
-        const ext = file.name.split('.').pop() || "png";
-        const storagePath = `payment_screenshots/${currentCheckoutOrderId}_${Date.now()}.${ext}`;
-        const storageRef = ref(storage, storagePath);
+        const compressed = await compressScreenshotForFirestore(file);
 
-        const uploadTask = uploadBytesResumable(storageRef, file, {
-          contentType: file.type
+        if (progressFill) progressFill.style.width = "70%";
+        if (statusMsg) statusMsg.textContent = "Saving screenshot to database...";
+        if (stateBadge) stateBadge.textContent = "Saving...";
+
+        // Dedicated document in payment_screenshots collection
+        const screenshotDocRef = doc(collection(db, "payment_screenshots"));
+        const screenshotDocId = screenshotDocRef.id;
+
+        await setDoc(screenshotDocRef, {
+          orderId: currentCheckoutOrderId,
+          imageBase64: compressed.dataUrl,
+          mimeType: compressed.mimeType,
+          fileSize: compressed.byteSize,
+          fileName: file.name || "screenshot.jpg",
+          createdAt: serverTimestamp()
         });
 
-        await new Promise((resolve, reject) => {
-          uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-              const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              if (progressFill) progressFill.style.width = `${percent}%`;
-              if (statusMsg) statusMsg.textContent = `Uploading screenshot... ${percent}%`;
-            },
-            (err) => reject(err),
-            () => resolve()
-          );
-        });
+        if (progressFill) progressFill.style.width = "100%";
 
-        const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-
-        currentUpiScreenshotUrl = downloadUrl;
-        currentUpiScreenshotPath = storageRef.fullPath;
+        currentUpiScreenshotDocId = screenshotDocId;
+        currentUpiScreenshotDataUrl = compressed.dataUrl;
         currentUpiScreenshotName = file.name;
 
+        const kbSize = (compressed.byteSize / 1024).toFixed(1);
         if (statusMsg) {
           statusMsg.style.display = "block";
           statusMsg.style.background = "#def7ec";
           statusMsg.style.color = "#03543f";
           statusMsg.style.border = "1px solid #84e1bc";
-          statusMsg.innerHTML = "✓ Payment screenshot successfully uploaded! You can now submit your order.";
+          statusMsg.innerHTML = `✓ Payment screenshot recorded (${kbSize} KB)! You can now submit your order.`;
         }
         if (stateBadge) {
           stateBadge.textContent = "Uploaded";
@@ -1809,15 +1921,15 @@ function setupStepScreenshotControls() {
           submitBtn.textContent = "Submit Order & Open WhatsApp";
         }
       } catch (err) {
-        console.error("Screenshot upload failed:", err);
-        currentUpiScreenshotUrl = null;
-        currentUpiScreenshotPath = null;
+        console.error("Screenshot database save failed:", err);
+        currentUpiScreenshotDocId = null;
+        currentUpiScreenshotDataUrl = null;
         if (statusMsg) {
           statusMsg.style.display = "block";
           statusMsg.style.background = "#fde8e8";
           statusMsg.style.color = "#9b1c1c";
           statusMsg.style.border = "1px solid #f8b4b4";
-          statusMsg.textContent = "Upload failed: " + err.message + ". Please try uploading again.";
+          statusMsg.textContent = "Save failed: " + err.message + ". Please try uploading again.";
         }
         if (stateBadge) {
           stateBadge.textContent = "Failed";
@@ -1837,7 +1949,7 @@ function setupStepScreenshotControls() {
   if (submitBtn) {
     submitBtn.addEventListener("click", async () => {
       if (isSubmittingOrder) return;
-      if (!currentUpiScreenshotUrl) {
+      if (!currentUpiScreenshotDocId) {
         alert("Please upload your payment screenshot before submitting.");
         return;
       }
@@ -2029,8 +2141,8 @@ function resetCheckoutForm() {
   if ($("#guestPinFields")) $("#guestPinFields").style.display = "none";
   if ($("#chkSameAsMobile")) $("#chkSameAsMobile").checked = false;
 
-  currentUpiScreenshotUrl = null;
-  currentUpiScreenshotPath = null;
+  currentUpiScreenshotDocId = null;
+  currentUpiScreenshotDataUrl = null;
   currentUpiScreenshotName = null;
   currentCheckoutOrderId = null;
   isUploadingStepScreenshot = false;
@@ -2142,8 +2254,8 @@ async function submitOrder(customPaymentMethod = null) {
         status: "Order Placed",
         paymentMethod,
         paymentStatus,
-        paymentScreenshot: isUpi ? (currentUpiScreenshotUrl || "") : "",
-        screenshotStoragePath: isUpi ? (currentUpiScreenshotPath || "") : "",
+        paymentScreenshot: isUpi ? ("ref:payment_screenshots/" + currentUpiScreenshotDocId) : "",
+        screenshotDocId: isUpi ? (currentUpiScreenshotDocId || "") : "",
         screenshotSubmitted: isUpi ? true : false,
         orderSubmitted: true,
         statusHistory: [
@@ -2151,7 +2263,7 @@ async function submitOrder(customPaymentMethod = null) {
             status: "Order Placed",
             timestamp: new Date().toISOString(),
             note: isUpi 
-              ? "Order placed via Online UPI QR. Payment screenshot recorded. Status: Pending Verification." 
+              ? "Order placed via Online UPI QR. Payment screenshot recorded in database. Status: Pending Verification." 
               : "Order placed with Cash on Delivery (Pending)"
           }
         ],
@@ -2276,8 +2388,8 @@ async function submitOrder(customPaymentMethod = null) {
       nextBtn.textContent = "Confirm Order (Cash on Delivery)";
     }
     if (submitUpiBtn) {
-      submitUpiBtn.disabled = !currentUpiScreenshotUrl;
-      submitUpiBtn.textContent = currentUpiScreenshotUrl ? "Submit Order & Open WhatsApp" : "Upload Screenshot Above to Submit";
+      submitUpiBtn.disabled = !currentUpiScreenshotDocId;
+      submitUpiBtn.textContent = currentUpiScreenshotDocId ? "Submit Order & Open WhatsApp" : "Upload Screenshot Above to Submit";
     }
   }
 }
@@ -2674,9 +2786,37 @@ function renderTrackResult(o) {
       const successEl = $("#trackScreenshotSuccess");
       if (successEl) successEl.style.display = "none";
 
-      if (o.paymentScreenshot) {
+      const screenshotDocId = o.screenshotDocId || (o.paymentScreenshot?.startsWith("ref:payment_screenshots/") ? o.paymentScreenshot.replace("ref:payment_screenshots/", "") : null);
+
+      if (screenshotDocId) {
         if (statusBadge) {
-          statusBadge.textContent = o.paymentScreenshotDrive ? "Screenshot Uploaded (Google Drive)" : "Screenshot Uploaded";
+          statusBadge.textContent = "Screenshot Recorded (Database)";
+          statusBadge.className = "payment-badge payment-verified";
+        }
+        if (displayWrap) displayWrap.style.display = "flex";
+        if (uploadWrap) uploadWrap.style.display = "none";
+
+        // Load screenshot Base64 data from payment_screenshots collection
+        getDoc(doc(db, "payment_screenshots", screenshotDocId)).then(snap => {
+          if (snap.exists() && snap.data().imageBase64) {
+            const b64 = snap.data().imageBase64;
+            if (imgEl) {
+              imgEl.style.display = "block";
+              imgEl.src = b64;
+            }
+            if (linkEl) linkEl.href = b64;
+            if (linkTextEl) {
+              linkTextEl.href = b64;
+              linkTextEl.target = "_blank";
+              linkTextEl.textContent = "Inspect full screenshot in new tab ↗";
+            }
+          }
+        }).catch(err => {
+          console.warn("Could not load screenshot document:", err.message);
+        });
+      } else if (o.paymentScreenshot && !o.paymentScreenshot.startsWith("ref:")) {
+        if (statusBadge) {
+          statusBadge.textContent = "Screenshot Uploaded";
           statusBadge.className = "payment-badge payment-verified";
         }
         if (displayWrap) displayWrap.style.display = "flex";
@@ -2684,16 +2824,11 @@ function renderTrackResult(o) {
         if (imgEl) {
           imgEl.style.display = "block";
           imgEl.src = o.paymentScreenshot;
-          imgEl.onerror = () => {
-            if (o.paymentScreenshotDrive) {
-              imgEl.style.display = "none";
-            }
-          };
         }
         if (linkEl) linkEl.href = o.paymentScreenshot;
         if (linkTextEl) {
           linkTextEl.href = o.paymentScreenshot;
-          linkTextEl.textContent = o.paymentScreenshotDrive ? "Inspect screenshot in Google Drive ↗" : "Inspect full screenshot in new tab ↗";
+          linkTextEl.textContent = "Inspect full screenshot in new tab ↗";
         }
       } else {
         if (statusBadge) {
@@ -2738,8 +2873,8 @@ if ($("#trackScreenshotFile")) {
       trackSelectedFile = null;
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Screenshot file size must be less than 5MB.");
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Screenshot file size must be less than 15MB.");
       e.target.value = "";
       trackSelectedFile = null;
       return;
@@ -2774,43 +2909,46 @@ if ($("#btnUploadTrackScreenshot")) {
 
     const btn = $("#btnUploadTrackScreenshot");
     btn.disabled = true;
-    btn.textContent = "Uploading to Google Drive...";
+    btn.textContent = "Optimizing & Saving to Database...";
 
     try {
-      const uploadResult = await uploadPaymentScreenshotFile(trackSelectedFile, currentTrackedOrder.orderId);
-      const persistentUrl = typeof uploadResult === "object" ? (uploadResult.webViewLink || uploadResult.url) : uploadResult;
+      const compressed = await compressScreenshotForFirestore(trackSelectedFile);
+
+      // Save to dedicated collection: payment_screenshots
+      const screenshotDocRef = doc(collection(db, "payment_screenshots"));
+      const screenshotDocId = screenshotDocRef.id;
+
+      await setDoc(screenshotDocRef, {
+        orderId: currentTrackedOrder.orderId,
+        imageBase64: compressed.dataUrl,
+        mimeType: compressed.mimeType,
+        fileSize: compressed.byteSize,
+        fileName: trackSelectedFile.name || "screenshot.jpg",
+        createdAt: serverTimestamp()
+      });
+
       const orderUpdate = {
-        paymentScreenshot: persistentUrl,
+        paymentScreenshot: "ref:payment_screenshots/" + screenshotDocId,
+        screenshotDocId: screenshotDocId,
+        screenshotSubmitted: true,
         paymentStatus: "Screenshot Submitted",
         updatedAt: serverTimestamp()
       };
-      if (typeof uploadResult === "object" && uploadResult.provider === "google_drive") {
-        orderUpdate.paymentScreenshotDrive = {
-          fileId: uploadResult.fileId,
-          fileName: uploadResult.fileName,
-          folderId: uploadResult.folderId,
-          webViewLink: uploadResult.webViewLink,
-          uploadTimestamp: uploadResult.uploadTimestamp,
-          orderId: currentTrackedOrder.orderId
-        };
-      }
       await updateDoc(doc(db, "orders", currentTrackedOrder.id), orderUpdate);
 
-      currentTrackedOrder.paymentScreenshot = persistentUrl;
-      if (orderUpdate.paymentScreenshotDrive) {
-        currentTrackedOrder.paymentScreenshotDrive = orderUpdate.paymentScreenshotDrive;
-      }
+      currentTrackedOrder.paymentScreenshot = "ref:payment_screenshots/" + screenshotDocId;
+      currentTrackedOrder.screenshotDocId = screenshotDocId;
+      currentTrackedOrder.screenshotSubmitted = true;
       currentTrackedOrder.paymentStatus = "Screenshot Submitted";
       renderTrackResult(currentTrackedOrder);
+
       if ($("#trackScreenshotSuccess")) {
         $("#trackScreenshotSuccess").style.display = "block";
-        if (orderUpdate.paymentScreenshotDrive) {
-          $("#trackScreenshotSuccess").innerHTML = `✓ Payment screenshot saved to Google Drive!<br><span style="font-size:.72rem; opacity:.85;">File ID: ${orderUpdate.paymentScreenshotDrive.fileId}</span>`;
-        }
+        $("#trackScreenshotSuccess").innerHTML = `✓ Payment screenshot saved to database!<br><span style="font-size:.72rem; opacity:.85;">Reference Doc ID: ${screenshotDocId}</span>`;
       }
       toast("Payment screenshot attached successfully!");
     } catch (err) {
-      console.error("Track screenshot upload error:", err);
+      console.error("Track screenshot save error:", err);
       alert("Upload Error: " + err.message);
     } finally {
       btn.disabled = false;
