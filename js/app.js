@@ -1,7 +1,7 @@
 import { db, DEFAULT_SETTINGS } from "./firebase-config.js";
 import {
   collection, onSnapshot, addDoc, serverTimestamp, doc, getDoc,
-  runTransaction, query, where, getDocs, updateDoc, setDoc, orderBy
+  runTransaction, query, where, getDocs, updateDoc, setDoc, orderBy, arrayUnion
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 // ---------- EMOJI SANITIZER FOR ZERO EMOJI COMPLIANCE ----------
@@ -238,10 +238,20 @@ async function uploadPaymentScreenshotFile(file, orderId = "UNKNOWN") {
     };
   }
 
-  // 4. Missing configuration error
-  throw new Error(
-    "Payment screenshot destination is not configured. The store owner can configure the Payment Screenshot Google Drive Folder URL and Web App in Admin Settings > Business & App Settings."
-  );
+  // 4. Safe compressed fallback if external destination is not yet configured
+  try {
+    const compressedData = await compressImageFileToDataUrl(file, 600, 600, 0.65);
+    return {
+      provider: "firestore_compressed",
+      url: compressedData,
+      webViewLink: compressedData,
+      fileId: `LOCAL_${Date.now()}`
+    };
+  } catch (compErr) {
+    throw new Error(
+      "Payment screenshot destination is not configured. The store owner can configure the Payment Screenshot Google Drive Folder URL in Admin Settings."
+    );
+  }
 }
 
 function compressImageFileToDataUrl(file, maxWidth = 800, maxHeight = 800, quality = 0.72) {
@@ -1039,6 +1049,7 @@ function autofillCheckoutFromProfile(p) {
   if ($("#addrDistrict")) $("#addrDistrict").value = a.district || "";
   if ($("#addrState")) $("#addrState").value = a.state || "";
   if ($("#addrPincode")) $("#addrPincode").value = a.pincode || "";
+  if ($("#findOrderMobileInput") && p.mobile) $("#findOrderMobileInput").value = p.mobile;
 }
 
 function showProfileAlert(msg, isError = true) {
@@ -1764,8 +1775,15 @@ function buildWhatsappMessage(orderId, items, subtotal, delivery, total) {
     msg += `${idx + 1}. ${removeEmojis(i.name)}${i.color ? " (" + removeEmojis(i.color) + ")" : ""}\nQuantity: ${i.qty}\nPrice: ${money(i.price)}\nSubtotal: ${money(i.price * i.qty)}\n\n`;
   });
   msg += `==================\nSubtotal: ${money(subtotal)}\nDelivery Charge: ${money(delivery)}\nFINAL TOTAL: ${money(total)}\n\n`;
-  msg += `PAYMENT METHOD: ${isUpi ? "Online UPI (Payment Review Pending)" : "Cash on Delivery"}\n`;
+  msg += `PAYMENT METHOD: ${isUpi ? "Online UPI (Pending Verification)" : "Cash on Delivery"}\n`;
   if (isUpi && payerRef) msg += `CUSTOMER UPI / UTR REF: ${payerRef}\n`;
+  if (isUpi) {
+    if (lastOrder?.paymentScreenshotDrive?.fileId) {
+      msg += `PAYMENT SCREENSHOT REF: Google Drive File ID (${lastOrder.paymentScreenshotDrive.fileId})\n`;
+    } else if (lastOrder?.paymentScreenshot) {
+      msg += `PAYMENT SCREENSHOT REF: Attached with Order ${orderId}\n`;
+    }
+  }
   msg += `\nCUSTOMER DETAILS:\n\n`;
   msg += `Name: ${removeEmojis($("#custName")?.value || "")}\nMobile: ${$("#custMobile")?.value || ""}\nWhatsApp: ${$("#custWhatsapp")?.value || ""}\nEmail: ${$("#custEmail")?.value || "N/A"}\n\nDELIVERY ADDRESS:\n\n${fullAddress()}\n\n`;
   msg += `SPECIAL INSTRUCTIONS:\n\n${removeEmojis($("#specialNotes")?.value || "").trim() || "None"}\n\n`;
@@ -1789,6 +1807,12 @@ function resetCheckoutForm() {
   if ($("#upiScreenshotFile")) $("#upiScreenshotFile").value = "";
   if ($("#upiScreenshotPreviewWrap")) $("#upiScreenshotPreviewWrap").style.display = "none";
   currentUploadedScreenshotDataUrl = "";
+  confSelectedFile = null;
+  isSubmittingScreenshotOrder = false;
+  if ($("#confScreenshotFile")) $("#confScreenshotFile").value = "";
+  if ($("#confScreenshotPreviewWrap")) $("#confScreenshotPreviewWrap").style.display = "none";
+  if ($("#btnUploadConfScreenshot")) $("#btnUploadConfScreenshot").style.display = "none";
+  if ($("#btnSubmitOrderAfterScreenshot")) $("#btnSubmitOrderAfterScreenshot").style.display = "none";
   selectedPaymentMethod = "COD";
   currentStep = 1;
 }
@@ -1810,7 +1834,7 @@ async function submitOrder(customPaymentMethod = null, targetApp = null) {
   const method = customPaymentMethod || selectedPaymentMethod || "COD";
   const isUpi = (method === "UPI");
   const paymentMethod = isUpi ? "UPI" : "COD";
-  const paymentStatus = isUpi ? "Payment Review Pending" : "Pending (Cash on Delivery)";
+  const paymentStatus = isUpi ? "Pending Verification" : "Pending (Cash on Delivery)";
   const payerUtr = ($("#upiPayerUtr")?.value || $("#upiUtrNumber")?.value || "").trim();
 
   const nextBtn = $("#nextStep");
@@ -1881,6 +1905,8 @@ async function submitOrder(customPaymentMethod = null, targetApp = null) {
         paymentMethod,
         paymentStatus,
         paymentScreenshot: "",
+        screenshotSubmitted: false,
+        orderSubmitted: !isUpi,
         recipientUpiId: isUpi ? (SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis") : "",
         payerUtr: isUpi ? payerUtr : "",
         payerUpiId: isUpi ? payerUtr : "",
@@ -1889,7 +1915,7 @@ async function submitOrder(customPaymentMethod = null, targetApp = null) {
             status: "Order Placed",
             timestamp: new Date().toISOString(),
             note: isUpi 
-              ? `Order placed with Online UPI (Payment Review Pending - awaiting bank verification${payerUtr ? `, Ref: ${payerUtr}` : ""})` 
+              ? `Order initiated with Online UPI (Pending Verification - awaiting payment screenshot${payerUtr ? `, Ref: ${payerUtr}` : ""})` 
               : "Order placed with Cash on Delivery (Pending)"
           }
         ],
@@ -1989,48 +2015,81 @@ async function submitOrder(customPaymentMethod = null, targetApp = null) {
     $("#checkoutOverlay").classList.remove("open");
     $("#confirmOrderId").textContent = orderId;
 
+    const confTitle = $("#confirmTitle");
+    const confSub = $("#confirmSubtitle");
+    const confInst = $("#confirmInstructions");
+    const confActions = $("#confirmActionsWrap") || document.querySelector(".confirm-actions");
+    const confScreenshotSec = $("#confirmScreenshotSection");
     const confMethodBadge = $("#confirmPaymentMethodBadge");
     const confStatusBadge = $("#confirmPaymentStatusBadge");
+
     if (confMethodBadge) {
       confMethodBadge.textContent = paymentMethod === "UPI" ? "Online UPI" : "Cash on Delivery";
       confMethodBadge.className = "payment-badge " + (paymentMethod === "UPI" ? "payment-verified" : "payment-cod");
     }
     if (confStatusBadge) {
       confStatusBadge.textContent = paymentStatus;
-      confStatusBadge.className = "payment-badge " + (paymentStatus.includes("Verified") ? "payment-verified" : "payment-pending");
+      confStatusBadge.className = "payment-badge payment-pending";
     }
 
-    // Configure confirmation screenshot upload section
-    const confScreenshotSec = $("#confirmScreenshotSection");
-    if (confScreenshotSec) {
-      if (isUpi) {
+    if (!isUpi) {
+      // CASH ON DELIVERY: Flow preserved
+      if (confTitle) confTitle.textContent = "Your Order Is Recorded";
+      if (confSub) confSub.textContent = "Your order has been securely saved in our database and prepared in WhatsApp.";
+      if (confInst) {
+        confInst.style.display = "block";
+        confInst.innerHTML = "Please press <strong>Send</strong> in WhatsApp to complete your message to our team.";
+      }
+      if (confScreenshotSec) confScreenshotSec.style.display = "none";
+      if (confActions) confActions.style.display = "flex";
+
+      $("#confirmOverlay").classList.add("open");
+      document.body.style.overflow = "hidden";
+
+      // Automatically initiate WhatsApp redirection for COD
+      try {
+        window.open(waUrl, "_blank");
+      } catch (waErr) {
+        console.warn("Automatic WhatsApp window blocked or failed:", waErr.message);
+      }
+    } else {
+      // ONLINE UPI / GPAY: Flow requiring mandatory screenshot upload before showing final actions
+      if (confTitle) confTitle.textContent = "Upload Payment Screenshot";
+      if (confSub) confSub.textContent = `Order #${orderId} has been initiated. A payment screenshot is mandatory to complete and submit your order.`;
+      if (confInst) confInst.style.display = "none";
+
+      // HIDE FINAL ACTIONS! Do not show either final action button before screenshot is uploaded and order is submitted
+      if (confActions) confActions.style.display = "none";
+
+      if (confScreenshotSec) {
         confScreenshotSec.style.display = "block";
         const formWrap = $("#confScreenshotFormWrap");
         const successMsg = $("#confScreenshotSuccessMsg");
         const fileInput = $("#confScreenshotFile");
         const previewWrap = $("#confScreenshotPreviewWrap");
         const uploadBtn = $("#btnUploadConfScreenshot");
+        const submitOrderBtn = $("#btnSubmitOrderAfterScreenshot");
         if (formWrap) formWrap.style.display = "block";
         if (successMsg) successMsg.style.display = "none";
         if (fileInput) fileInput.value = "";
         if (previewWrap) previewWrap.style.display = "none";
-        if (uploadBtn) uploadBtn.style.display = "none";
-      } else {
-        confScreenshotSec.style.display = "none";
+        if (uploadBtn) {
+          uploadBtn.style.display = "none";
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = "Upload / Save Screenshot";
+        }
+        if (submitOrderBtn) submitOrderBtn.style.display = "none";
       }
-    }
 
-    $("#confirmOverlay").classList.add("open");
-    document.body.style.overflow = "hidden";
+      $("#confirmOverlay").classList.add("open");
+      document.body.style.overflow = "hidden";
 
-    // If UPI selected: trigger UPI deep link or target app
-    if (isUpi) {
+      // Trigger UPI app deep link
       const upiId = SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis";
       const storeName = encodeURIComponent(SETTINGS.businessName || "Blume Arts");
       const orderAmount = Number(total || 0).toFixed(2);
       const orderNote = encodeURIComponent(`Blume Arts Order ${orderId}`);
 
-      // Universal standard UPI payload
       const standardUpiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(standardUpiLink)}`;
 
@@ -2043,7 +2102,6 @@ async function submitOrder(customPaymentMethod = null, targetApp = null) {
         upiDeepLink = `tez://upi/pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
       }
 
-      // Open UPI deep link directly on click context
       const launchTime = Date.now();
       try {
         window.location.href = upiDeepLink;
@@ -2051,7 +2109,6 @@ async function submitOrder(customPaymentMethod = null, targetApp = null) {
         console.warn("Direct URI launch failed:", launchErr);
       }
 
-      // Provide fallback modal if UPI app could not open
       setTimeout(() => {
         if (Date.now() - launchTime < 2500) {
           if ($("#fallbackUpiIdDisplay")) $("#fallbackUpiIdDisplay").textContent = upiId;
@@ -2060,13 +2117,6 @@ async function submitOrder(customPaymentMethod = null, targetApp = null) {
           $("#upiFallbackModalOverlay")?.classList.add("open");
         }
       }, 1500);
-    } else {
-      // For COD: Automatically initiate WhatsApp redirection
-      try {
-        window.open(waUrl, "_blank");
-      } catch (waErr) {
-        console.warn("Automatic WhatsApp window blocked or failed:", waErr.message);
-      }
     }
 
   } catch (err) {
@@ -2197,7 +2247,8 @@ if ($("#btnUploadConfScreenshot")) {
       const persistentUrl = typeof uploadResult === "object" ? (uploadResult.webViewLink || uploadResult.url) : uploadResult;
       const orderUpdate = {
         paymentScreenshot: persistentUrl,
-        paymentStatus: "Screenshot Submitted",
+        paymentStatus: "Pending Verification",
+        screenshotSubmitted: true,
         updatedAt: serverTimestamp()
       };
       if (typeof uploadResult === "object" && uploadResult.provider === "google_drive") {
@@ -2205,7 +2256,6 @@ if ($("#btnUploadConfScreenshot")) {
           fileId: uploadResult.fileId,
           fileName: uploadResult.fileName,
           folderId: uploadResult.folderId,
-          webViewLink: uploadResult.webViewLink,
           uploadTimestamp: uploadResult.uploadTimestamp,
           orderId: lastOrder?.orderId || ""
         };
@@ -2218,27 +2268,124 @@ if ($("#btnUploadConfScreenshot")) {
         if (orderUpdate.paymentScreenshotDrive) {
           lastOrder.paymentScreenshotDrive = orderUpdate.paymentScreenshotDrive;
         }
-        lastOrder.paymentStatus = "Screenshot Submitted";
+        lastOrder.paymentStatus = "Pending Verification";
+        sessionStorage.setItem("blume_last_order", JSON.stringify(lastOrder));
       }
 
       if ($("#confirmPaymentStatusBadge")) {
-        $("#confirmPaymentStatusBadge").textContent = "Screenshot Submitted";
+        $("#confirmPaymentStatusBadge").textContent = "Pending Verification";
       }
 
       if ($("#confScreenshotFormWrap")) $("#confScreenshotFormWrap").style.display = "none";
       if ($("#confScreenshotSuccessMsg")) {
         $("#confScreenshotSuccessMsg").style.display = "block";
         if (orderUpdate.paymentScreenshotDrive) {
-          $("#confScreenshotSuccessMsg").innerHTML = `✓ Payment screenshot saved to Google Drive!<br><span style="font-size:.72rem; opacity:.85;">File ID: ${orderUpdate.paymentScreenshotDrive.fileId}</span>`;
+          $("#confScreenshotSuccessMsg").innerHTML = `✓ Payment screenshot securely saved to Google Drive!<br><span style="font-size:.72rem; opacity:.85;">File ID: ${orderUpdate.paymentScreenshotDrive.fileId}</span>`;
+        } else {
+          $("#confScreenshotSuccessMsg").innerHTML = `✓ Payment screenshot uploaded and securely linked to Order ${lastOrder?.orderId}!`;
         }
       }
-      toast("Payment screenshot submitted successfully!");
+
+      toast("Payment screenshot uploaded! Click Submit Order to finish.");
+
+      // STEP 5: Only after the screenshot has been successfully uploaded and saved, enable the 'Submit Order' button
+      const submitOrderBtn = $("#btnSubmitOrderAfterScreenshot");
+      if (submitOrderBtn) {
+        submitOrderBtn.style.display = "block";
+        submitOrderBtn.disabled = false;
+        submitOrderBtn.textContent = "Submit Order & Open WhatsApp ➔";
+      }
+
+      // Final action buttons MUST REMAIN HIDDEN until Submit Order is clicked
+      const confActions = $("#confirmActionsWrap") || document.querySelector(".confirm-actions");
+      if (confActions) confActions.style.display = "none";
+
     } catch (err) {
       console.error("Screenshot upload error:", err);
       alert("Upload Error: " + err.message);
-    } finally {
       btn.disabled = false;
-      btn.textContent = "Submit Payment Screenshot";
+      btn.textContent = "Upload / Save Screenshot";
+    }
+  });
+}
+
+// STEP 6: Customer clicks 'Submit Order'
+let isSubmittingScreenshotOrder = false;
+
+if ($("#btnSubmitOrderAfterScreenshot")) {
+  $("#btnSubmitOrderAfterScreenshot").addEventListener("click", async () => {
+    if (isSubmittingScreenshotOrder) return;
+    if (!lastOrder || !lastOrder.docId) {
+      alert("Order information is missing. Please try tracking your order.");
+      return;
+    }
+
+    isSubmittingScreenshotOrder = true;
+    const btn = $("#btnSubmitOrderAfterScreenshot");
+    btn.disabled = true;
+    btn.textContent = "Submitting Order...";
+
+    try {
+      // 1. Persist submission state in Firestore
+      await updateDoc(doc(db, "orders", lastOrder.docId), {
+        paymentStatus: "Pending Verification", // Stays Pending Verification
+        orderSubmitted: true,
+        statusHistory: arrayUnion({
+          status: "Order Submitted with Payment Screenshot",
+          timestamp: new Date().toISOString(),
+          note: `Customer submitted payment screenshot (Ref: ${lastOrder.paymentScreenshotDrive?.fileId || "Uploaded"}). Status: Pending Verification.`
+        }),
+        updatedAt: serverTimestamp()
+      });
+
+      // 2. Build pre-filled WhatsApp message with screenshot reference (no public URLs)
+      const waMessage = buildWhatsappMessage(
+        lastOrder.orderId,
+        lastOrder.items || [],
+        lastOrder.subtotal || 0,
+        lastOrder.deliveryCharge || 0,
+        lastOrder.total || 0
+      );
+      const cleanPhone = getCleanWhatsappPhone(SETTINGS.whatsapp || SETTINGS.phone);
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waMessage)}`;
+
+      lastOrder.waUrl = waUrl;
+      lastOrder.waMessage = waMessage;
+      sessionStorage.setItem("blume_last_order", JSON.stringify(lastOrder));
+
+      // 3. Open WhatsApp
+      try {
+        window.open(waUrl, "_blank");
+      } catch (e) {
+        console.warn("WhatsApp window open failed:", e);
+      }
+
+      // 4. Update UI to final confirmation state
+      const confTitle = $("#confirmTitle");
+      const confSub = $("#confirmSubtitle");
+      const confInst = $("#confirmInstructions");
+      const confScreenshotSec = $("#confirmScreenshotSection");
+      const confActions = $("#confirmActionsWrap") || document.querySelector(".confirm-actions");
+
+      if (confTitle) confTitle.textContent = "Your Order Is Recorded";
+      if (confSub) confSub.textContent = `Order #${lastOrder.orderId} and payment screenshot submitted successfully.`;
+      if (confInst) {
+        confInst.style.display = "block";
+        confInst.innerHTML = "Please press <strong>Send</strong> in WhatsApp to complete your message to our team.";
+      }
+      if (confScreenshotSec) confScreenshotSec.style.display = "none";
+
+      // 5. Show final confirmation panel with 'Open WhatsApp' on left, 'Continue Shopping' on right
+      if (confActions) confActions.style.display = "flex";
+
+      toast("Order submitted! Please tap Send in WhatsApp.");
+    } catch (err) {
+      console.error("Submit order error:", err);
+      alert("Submission error: " + err.message);
+      btn.disabled = false;
+      btn.textContent = "Submit Order & Open WhatsApp ➔";
+    } finally {
+      isSubmittingScreenshotOrder = false;
     }
   });
 }
@@ -2326,6 +2473,165 @@ if ($("#trackOrderForm")) {
     } finally {
       btn.disabled = false;
       btn.textContent = "Track Order";
+    }
+  });
+}
+
+// ---------- YOUR ORDER ID: SEARCH ORDERS BY MOBILE NUMBER (CHANGE 2) ----------
+if ($("#findOrderIdForm")) {
+  $("#findOrderIdForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const rawMobile = $("#findOrderMobileInput")?.value.trim() || "";
+    const cleanMobile = rawMobile.replace(/\D/g, "");
+    const btn = $("#btnFindOrders");
+    const resultsWrap = $("#findOrderResultsWrap");
+    const countBanner = $("#findOrderCountBanner");
+    const resultsList = $("#findOrderResultsList");
+
+    if (!cleanMobile || cleanMobile.length !== 10) {
+      toast("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span>Searching...</span>`;
+    }
+    if (resultsWrap) resultsWrap.style.display = "block";
+    if (countBanner) countBanner.innerHTML = `<span style="opacity:.75;">Searching orders for <strong>${cleanMobile}</strong>...</span>`;
+    if (resultsList) resultsList.innerHTML = `<div style="text-align:center; padding:12px; font-size:.8rem; opacity:.7;">Loading matching orders...</div>`;
+
+    try {
+      // Query orders strictly by customer mobile number (secure verification)
+      const q = query(collection(db, "orders"), where("mobile", "==", cleanMobile));
+      const snap = await getDocs(q);
+
+      const matchedOrders = [];
+      snap.forEach(docSnap => {
+        const d = docSnap.data();
+        const orderId = d.orderId || docSnap.id;
+        
+        let dateStr = "—";
+        let timeStr = "";
+        let millis = 0;
+        if (d.createdAt?.toDate) {
+          const dt = d.createdAt.toDate();
+          dateStr = dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+          timeStr = dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+          millis = dt.getTime();
+        } else if (d.createdAt) {
+          const dt = new Date(d.createdAt);
+          if (!isNaN(dt.getTime())) {
+            dateStr = dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+            timeStr = dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+            millis = dt.getTime();
+          }
+        }
+
+        // Security & Privacy: Expose strictly safe non-private fields (Order ID, date, time, status)
+        matchedOrders.push({
+          orderId,
+          dateStr,
+          timeStr,
+          status: d.status || "Order Placed",
+          paymentStatus: d.paymentStatus || "",
+          timestamp: millis
+        });
+      });
+
+      // Also check whatsapp field if no matching orders found
+      if (matchedOrders.length === 0) {
+        const qWa = query(collection(db, "orders"), where("whatsapp", "==", cleanMobile));
+        const snapWa = await getDocs(qWa);
+        snapWa.forEach(docSnap => {
+          const d = docSnap.data();
+          const orderId = d.orderId || docSnap.id;
+          let dateStr = "—";
+          let timeStr = "";
+          let millis = 0;
+          if (d.createdAt?.toDate) {
+            const dt = d.createdAt.toDate();
+            dateStr = dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+            timeStr = dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+            millis = dt.getTime();
+          }
+          matchedOrders.push({
+            orderId,
+            dateStr,
+            timeStr,
+            status: d.status || "Order Placed",
+            paymentStatus: d.paymentStatus || "",
+            timestamp: millis
+          });
+        });
+      }
+
+      // Sort results from newest to oldest
+      matchedOrders.sort((a, b) => b.timestamp - a.timestamp);
+
+      if (matchedOrders.length === 0) {
+        if (countBanner) {
+          countBanner.innerHTML = `<span style="color:#b91c1c;">No orders found associated with mobile number <strong>${cleanMobile}</strong>.</span>`;
+        }
+        if (resultsList) {
+          resultsList.innerHTML = `
+            <div style="background:var(--cream); border:1px dashed var(--beige); border-radius:10px; padding:16px; text-align:center; font-size:.8rem; color:var(--brown);">
+              Please verify that you entered the exact 10-digit mobile number used during checkout.
+            </div>
+          `;
+        }
+      } else {
+        if (countBanner) {
+          countBanner.innerHTML = `<span style="color:var(--rose-deep);">Found <strong>${matchedOrders.length}</strong> matching order(s) for <strong>${cleanMobile}</strong>:</span>`;
+        }
+        if (resultsList) {
+          resultsList.innerHTML = matchedOrders.map(item => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:var(--cream); border:1px solid var(--beige); border-radius:10px; padding:12px 14px; flex-wrap:wrap; gap:8px;">
+              <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <strong style="font-family:monospace; font-size:.95rem; color:var(--brown);">${item.orderId}</strong>
+                  <span class="status-pill-badge sm" style="font-size:.68rem; padding:3px 8px;">${item.status}</span>
+                </div>
+                <div style="font-size:.74rem; opacity:.75; margin-top:3px;">
+                  Date: ${item.dateStr}${item.timeStr ? ` | Time: ${item.timeStr}` : ""}
+                </div>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm btn-quick-track-order" data-order-id="${item.orderId}" data-mobile="${cleanMobile}" style="font-size:.76rem; padding:5px 12px; cursor:pointer;">
+                Track Order ➔
+              </button>
+            </div>
+          `).join("");
+
+          // Connect clicking "Track Order" to populate and submit existing Track Order form
+          resultsList.querySelectorAll(".btn-quick-track-order").forEach(trkBtn => {
+            trkBtn.addEventListener("click", () => {
+              const oId = trkBtn.dataset.orderId;
+              const mob = trkBtn.dataset.mobile;
+              if ($("#trackOrderId")) $("#trackOrderId").value = oId;
+              if ($("#trackVerifyInput")) $("#trackVerifyInput").value = mob;
+              const trkForm = $("#trackOrderForm");
+              if (trkForm) {
+                trkForm.scrollIntoView({ behavior: "smooth" });
+                trkForm.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+              }
+            });
+          });
+        }
+      }
+
+    } catch (err) {
+      console.error("Find orders error:", err);
+      if (countBanner) countBanner.innerHTML = `<span style="color:#b91c1c;">Error searching orders: ${err.message}</span>`;
+      if (resultsList) resultsList.innerHTML = "";
+      toast("Error searching orders: " + err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <span>Search</span>
+        `;
+      }
     }
   });
 }

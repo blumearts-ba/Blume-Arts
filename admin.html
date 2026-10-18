@@ -242,18 +242,6 @@
         </div>
       </div>
 
-      <div class="card-table" style="padding:24px; margin-bottom:24px;">
-        <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Image Hosting (Payment Screenshots)</h3>
-        <p style="font-size:.82rem; opacity:.75; margin-bottom:14px; line-height:1.5;">
-          Store persistent payment screenshot URLs in Firestore without Firebase Storage. You can configure free <strong>Cloudinary</strong> (recommended — uses an unsigned upload preset so no secret keys are exposed) or <strong>ImgBB</strong>.
-        </p>
-        <div class="form-grid">
-          <div class="form-group"><label>Cloudinary Cloud Name</label><input id="setCloudinaryCloudName" placeholder="e.g. blume-arts"></div>
-          <div class="form-group"><label>Cloudinary Upload Preset (Unsigned)</label><input id="setCloudinaryUploadPreset" placeholder="e.g. blume_payments"></div>
-          <div class="form-group full"><label>ImgBB API Key (Alternative)</label><input id="setImgbbApiKey" placeholder="e.g. 1234567890abcdef"></div>
-        </div>
-        <div class="form-actions"><button class="btn" id="saveImageHostSettingsBtn">Save Image Hosting</button></div>
-      </div>
     </div>
 
     <!-- ACCESS MANAGEMENT -->
@@ -404,48 +392,6 @@
   <div class="modal" id="orderModalBody"></div>
 </div>
 
-<!-- PAYMENT SCREENSHOT VIEWER MODAL -->
-<div class="overlay" id="screenshotViewerModalOverlay">
-  <div class="modal" style="max-width:580px; text-align:center;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--beige); padding-bottom:10px;">
-      <h3 style="margin:0; font-size:1.15rem; color:var(--rose-deep); font-family:'Playfair Display',serif;">Payment Screenshot Evidence</h3>
-      <button type="button" id="closeScreenshotViewer" style="background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--brown); line-height:1;">✕</button>
-    </div>
-    
-    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; background:var(--cream); padding:10px 12px; border-radius:10px; margin-bottom:14px; font-size:.82rem; text-align:left;">
-      <div><span style="opacity:.65; display:block; font-size:.7rem;">Order ID</span><strong id="viewerOrderId">—</strong></div>
-      <div><span style="opacity:.65; display:block; font-size:.7rem;">Order Amount</span><strong id="viewerOrderAmount" style="color:var(--rose-deep);">—</strong></div>
-      <div><span style="opacity:.65; display:block; font-size:.7rem;">Payment Status</span><span id="viewerPaymentStatus" class="pill yes" style="font-size:.68rem;">—</span></div>
-    </div>
-
-    <div id="viewerDriveMetaBox" style="display:none; margin-bottom:12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 12px; text-align:left; font-size:.78rem;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-        <span class="pill primary" style="background:#2563eb; color:#fff; font-size:.7rem;">Google Drive Secure Storage</span>
-        <a id="viewerDriveDirectBtn" href="#" target="_blank" class="btn outline sm" style="font-size:.72rem; padding:3px 8px; text-decoration:none;">Open in Drive ↗</a>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; color:#1e293b;">
-        <div><strong style="font-size:.7rem; opacity:.7; display:block;">File Name:</strong><span id="viewerDriveFileName" style="word-break:break-all;">—</span></div>
-        <div><strong style="font-size:.7rem; opacity:.7; display:block;">File ID:</strong><code id="viewerDriveFileId" style="font-size:.72rem; word-break:break-all;">—</code></div>
-      </div>
-    </div>
-
-    <div style="max-height:65vh; overflow:auto; margin-bottom:16px; border:1px solid var(--beige); border-radius:12px; padding:6px; background:#fafafa;">
-      <img id="viewerScreenshotImg" src="" alt="Payment Screenshot" style="max-width:100%; height:auto; border-radius:8px; display:block; margin:0 auto; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-      <div id="viewerDrivePrivateNotice" style="display:none; padding:14px; color:#1e3a8a; background:#f0fdf4; border-radius:8px; margin-top:8px; font-size:.78rem; line-height:1.5;">
-        🔒 <strong>Private Google Drive Image:</strong> If the preview above does not load directly due to Google's cross-origin security, click <strong>"Open Full Size ↗"</strong> or <strong>"Open in Drive ↗"</strong> to view the full image in Google Drive while signed into your admin Google account.
-      </div>
-    </div>
-
-    <div class="form-actions" style="justify-content:space-between; align-items:center;">
-      <a id="viewerOpenTabBtn" href="#" target="_blank" class="btn outline sm" style="text-decoration:none; font-size:.78rem;">Open Full Size ↗</a>
-      <div style="display:flex; gap:8px;">
-        <button type="button" class="btn outline sm" id="closeScreenshotViewerBtn">Close</button>
-        <button type="button" class="btn sm" id="viewerMarkPaidBtn" style="background:#2e6f40; border-color:#2e6f40; font-size:.78rem;">Mark Payment Verified</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script type="module" src="js/admin.js?v=9.4"></script>
+<script type="module" src="js/admin.js?v=9.5"></script>
 </body>
 </html>

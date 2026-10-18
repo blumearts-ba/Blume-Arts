@@ -155,6 +155,33 @@
         <button type="button" class="btn btn-outline btn-sm" id="bannerManageDetailsBtn">Save / Access Details</button>
       </div>
 
+      <!-- YOUR ORDER ID LOOKUP BY CUSTOMER MOBILE NUMBER -->
+      <div class="your-order-id-section" id="yourOrderIdSection" style="margin-top:20px; background:var(--white); border:1.5px solid var(--beige); border-radius:14px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rose-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <h4 style="margin:0; font-size:1.05rem; color:var(--brown); font-family:var(--serif);">Your Order ID</h4>
+          </div>
+          <span style="font-size:.76rem; opacity:.75;">Find previous orders using your checkout mobile number</span>
+        </div>
+        
+        <form id="findOrderIdForm" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+          <div style="flex:1; min-width:220px;">
+            <label for="findOrderMobileInput" style="font-size:.78rem; font-weight:600; color:var(--brown); display:block; margin-bottom:4px;">Mobile Number *</label>
+            <input type="tel" id="findOrderMobileInput" placeholder="Enter 10-digit mobile number" maxlength="10" required style="width:100%; padding:9px 12px; border:1px solid var(--beige); border-radius:8px; font-size:.85rem; background:var(--cream);">
+          </div>
+          <button type="submit" class="btn btn-outline" id="btnFindOrders" style="padding:9px 16px; font-size:.85rem; font-weight:600; display:flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span>Search</span>
+          </button>
+        </form>
+
+        <div id="findOrderResultsWrap" style="display:none; margin-top:16px;">
+          <div id="findOrderCountBanner" style="font-size:.82rem; margin-bottom:10px; color:var(--brown); font-weight:600;"></div>
+          <div id="findOrderResultsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+      </div>
+
       <div id="trackResultWrap" class="track-result-wrap" style="display:none">
         <div class="track-header-banner">
           <div>
@@ -627,48 +654,54 @@
 <div class="overlay" id="confirmOverlay">
   <div class="modal" style="max-width:480px">
     <div class="confirm-box">
-      <div class="icon">
+      <div class="icon" id="confirmIcon">
         <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--rose-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
       </div>
-      <h2>Your Order Is Recorded</h2>
-      <p style="font-size:.85rem; color:var(--brown); margin-bottom:4px;">Your order has been securely saved in our database and prepared in WhatsApp.</p>
-      <p style="font-size:.8rem; opacity:.85; margin-bottom:12px;">Please press <strong>Send</strong> in WhatsApp to complete your message to our team.</p>
+      <h2 id="confirmTitle">Your Order Is Recorded</h2>
+      <p id="confirmSubtitle" style="font-size:.85rem; color:var(--brown); margin-bottom:4px;">Your order has been securely saved in our database and prepared in WhatsApp.</p>
+      <p id="confirmInstructions" style="font-size:.8rem; opacity:.85; margin-bottom:12px;">Please press <strong>Send</strong> in WhatsApp to complete your message to our team.</p>
       <div class="order-id-tag" id="confirmOrderId">BA-00001</div>
       <div id="confirmPaymentBadges" style="margin-bottom:16px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
         <span class="payment-badge" id="confirmPaymentMethodBadge">Cash on Delivery</span>
         <span class="payment-badge" id="confirmPaymentStatusBadge">Pending</span>
       </div>
 
-      <!-- UPI Payment Screenshot Upload Section -->
-      <div id="confirmScreenshotSection" style="display:none; background:var(--cream); border:1px solid var(--beige); border-radius:14px; padding:16px; margin-bottom:16px; text-align:left;">
+      <!-- UPI Payment Screenshot Upload Section (Mandatory for UPI) -->
+      <div id="confirmScreenshotSection" style="display:none; background:var(--cream); border:1.5px solid var(--beige); border-radius:14px; padding:16px; margin-bottom:16px; text-align:left;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--rose-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <strong style="font-size:.85rem; color:var(--brown);">Upload Payment Screenshot</strong>
+          <strong style="font-size:.88rem; color:var(--brown);" id="confScreenshotHeader">Payment Screenshot (Mandatory)</strong>
         </div>
-        <p style="font-size:.76rem; opacity:.8; margin-bottom:10px;">
-          Paid via Google Pay / UPI? Upload your payment screenshot to attach proof to your order.
+        <p style="font-size:.76rem; opacity:.85; margin-bottom:10px;" id="confScreenshotDesc">
+          Please upload your payment screenshot from Google Pay, PhonePe, Paytm, etc. This is required before you can submit your order.
         </p>
 
         <div id="confScreenshotFormWrap">
           <input type="file" id="confScreenshotFile" accept="image/jpeg,image/png,image/webp" style="font-size:.78rem; width:100%; background:var(--white); border:1.5px dashed var(--beige); padding:8px; border-radius:10px; cursor:pointer;">
-          <span style="font-size:.7rem; opacity:.7; display:block; margin-top:4px;">JPG, PNG, or WebP</span>
+          <span style="font-size:.7rem; opacity:.7; display:block; margin-top:4px;">Accepts JPG, PNG, or WebP (Max 5MB)</span>
 
           <div id="confScreenshotPreviewWrap" style="display:none; margin-top:10px; position:relative; width:100px; height:100px; border-radius:10px; overflow:hidden; border:1px solid var(--beige);">
             <img id="confScreenshotPreview" src="" alt="Screenshot Preview" style="width:100%; height:100%; object-fit:cover;">
             <button type="button" id="btnRemoveConfScreenshot" style="position:absolute; top:3px; right:3px; background:rgba(0,0,0,0.65); color:#fff; border:none; border-radius:50%; width:20px; height:20px; font-size:.7rem; cursor:pointer;">✕</button>
           </div>
 
-          <button type="button" class="btn btn-primary btn-block btn-sm" id="btnUploadConfScreenshot" style="margin-top:10px; font-size:.8rem; display:none;">
-            Submit Payment Screenshot
+          <button type="button" class="btn btn-primary btn-block btn-sm" id="btnUploadConfScreenshot" style="margin-top:10px; font-size:.82rem; font-weight:600; display:none;">
+            Upload / Save Screenshot
           </button>
         </div>
 
-        <div id="confScreenshotSuccessMsg" style="display:none; background:#def7ec; border:1px solid #84e1bc; color:#03543f; padding:10px; border-radius:8px; font-size:.78rem; text-align:center;">
-          ✓ Screenshot submitted! Our team will review and verify your payment.
+        <div id="confScreenshotSuccessMsg" style="display:none; background:#def7ec; border:1px solid #84e1bc; color:#03543f; padding:10px 12px; border-radius:8px; font-size:.78rem; text-align:center;">
+          ✓ Screenshot uploaded successfully!
         </div>
+
+        <!-- Submit Order button enabled only after screenshot is successfully uploaded -->
+        <button type="button" class="btn btn-primary btn-block" id="btnSubmitOrderAfterScreenshot" style="display:none; margin-top:12px; font-weight:700; font-size:.9rem; padding:11px 16px;">
+          Submit Order & Open WhatsApp ➔
+        </button>
       </div>
 
-      <div class="confirm-actions">
+      <!-- Final Actions (Open WhatsApp on the left, Continue Shopping on the right) -->
+      <div class="confirm-actions" id="confirmActionsWrap">
         <button class="btn btn-primary" id="openWhatsappBtn">Open WhatsApp</button>
         <button class="btn btn-outline" id="continueShoppingBtn">Continue Shopping</button>
       </div>
@@ -863,7 +896,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="js/app.js?v=9.7"></script>
+<script type="module" src="js/app.js?v=9.8"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

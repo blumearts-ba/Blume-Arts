@@ -701,16 +701,6 @@ function renderOrdersTable() {
       <td>
         <span class="pill ${o.paymentMethod === "UPI" ? "yes" : "no"}" style="font-size:.7rem; display:inline-block; margin-bottom:2px;">${o.paymentMethod || "COD"}</span>
         <div style="font-size:.68rem; opacity:.75; max-width:110px; line-height:1.2;">${o.paymentStatus || (o.paymentMethod === "UPI" ? "Pending Verification" : "Pay on Delivery")}</div>
-        ${o.paymentMethod === "UPI" ? `
-          <div style="margin-top:4px;">
-            ${o.paymentScreenshot ? `
-              <span class="pill yes" style="font-size:.62rem; display:inline-block; margin-bottom:3px;">Screenshot Uploaded</span><br>
-              <button class="btn outline sm view-screenshot-btn" data-id="${o.id}" style="font-size:.68rem; padding:2px 8px; line-height:1.4;">View Screenshot</button>
-            ` : `
-              <span class="pill no" style="font-size:.62rem; display:inline-block;">Screenshot Not Uploaded</span>
-            `}
-          </div>
-        ` : ""}
       </td>
       <td>
         <select class="status-select" data-id="${o.id}">
@@ -727,114 +717,10 @@ function renderOrdersTable() {
     });
   });
   document.querySelectorAll(".view-order").forEach(el => el.addEventListener("click", () => openOrderModal(el.dataset.id)));
-  document.querySelectorAll(".view-screenshot-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const o = ORDERS.find(x => x.id === btn.dataset.id);
-      if (o && o.paymentScreenshot) openScreenshotViewerModal(o);
-    });
-  });
 }
 
 if ($("#orderSearchInput")) $("#orderSearchInput").addEventListener("input", renderOrdersTable);
 if ($("#orderStatusFilter")) $("#orderStatusFilter").addEventListener("change", renderOrdersTable);
-
-// ------------------------------------------------------------
-// PAYMENT SCREENSHOT VIEWER MODAL
-// ------------------------------------------------------------
-let viewingScreenshotOrderId = null;
-
-function openScreenshotViewerModal(order) {
-  if (!order) return;
-  viewingScreenshotOrderId = order.id;
-  if ($("#viewerOrderId")) $("#viewerOrderId").textContent = order.orderId || order.id;
-  if ($("#viewerOrderAmount")) $("#viewerOrderAmount").textContent = "₹" + (order.total || 0).toLocaleString("en-IN");
-  if ($("#viewerPaymentStatus")) {
-    const isPaid = (order.paymentStatus || "").includes("Verified");
-    $("#viewerPaymentStatus").textContent = order.paymentStatus || "Payment Review Pending";
-    $("#viewerPaymentStatus").className = "pill " + (isPaid ? "yes" : "no");
-  }
-
-  const driveMetaBox = $("#viewerDriveMetaBox");
-  const drivePrivateNotice = $("#viewerDrivePrivateNotice");
-  const driveFileName = $("#viewerDriveFileName");
-  const driveFileId = $("#viewerDriveFileId");
-  const driveDirectBtn = $("#viewerDriveDirectBtn");
-  const imgEl = $("#viewerScreenshotImg");
-  const openTabBtn = $("#viewerOpenTabBtn");
-
-  const screenshotUrl = order.paymentScreenshot || order.paymentScreenshotDrive?.webViewLink || "";
-
-  if (order.paymentScreenshotDrive) {
-    if (driveMetaBox) driveMetaBox.style.display = "block";
-    if (drivePrivateNotice) drivePrivateNotice.style.display = "block";
-    if (driveFileName) driveFileName.textContent = order.paymentScreenshotDrive.fileName || "Payment Screenshot";
-    if (driveFileId) driveFileId.textContent = order.paymentScreenshotDrive.fileId || "—";
-    if (driveDirectBtn) driveDirectBtn.href = order.paymentScreenshotDrive.webViewLink || screenshotUrl;
-    if (openTabBtn) openTabBtn.href = order.paymentScreenshotDrive.webViewLink || screenshotUrl;
-  } else {
-    if (driveMetaBox) driveMetaBox.style.display = "none";
-    if (drivePrivateNotice) drivePrivateNotice.style.display = "none";
-    if (openTabBtn) openTabBtn.href = screenshotUrl || "#";
-  }
-
-  if (imgEl) {
-    imgEl.style.display = "block";
-    imgEl.src = screenshotUrl;
-    imgEl.onerror = () => {
-      if (order.paymentScreenshotDrive) {
-        imgEl.style.display = "none";
-      }
-    };
-  }
-
-  if ($("#screenshotViewerModalOverlay")) {
-    $("#screenshotViewerModalOverlay").classList.add("open");
-  }
-}
-
-function closeScreenshotViewerModal() {
-  if ($("#screenshotViewerModalOverlay")) {
-    $("#screenshotViewerModalOverlay").classList.remove("open");
-  }
-  viewingScreenshotOrderId = null;
-}
-
-if ($("#closeScreenshotViewer")) $("#closeScreenshotViewer").addEventListener("click", closeScreenshotViewerModal);
-if ($("#closeScreenshotViewerBtn")) $("#closeScreenshotViewerBtn").addEventListener("click", closeScreenshotViewerModal);
-if ($("#screenshotViewerModalOverlay")) {
-  $("#screenshotViewerModalOverlay").addEventListener("click", (e) => {
-    if (e.target.id === "screenshotViewerModalOverlay") closeScreenshotViewerModal();
-  });
-}
-
-if ($("#viewerMarkPaidBtn")) {
-  $("#viewerMarkPaidBtn").addEventListener("click", async () => {
-    if (!viewingScreenshotOrderId) return;
-    const btn = $("#viewerMarkPaidBtn");
-    btn.disabled = true;
-    btn.textContent = "Updating...";
-    try {
-      await updateDoc(doc(db, "orders", viewingScreenshotOrderId), {
-        paymentStatus: "Payment Verified / Paid",
-        updatedAt: serverTimestamp()
-      });
-      const order = ORDERS.find(x => x.id === viewingScreenshotOrderId);
-      if (order) order.paymentStatus = "Payment Verified / Paid";
-      if ($("#viewerPaymentStatus")) {
-        $("#viewerPaymentStatus").textContent = "Payment Verified / Paid";
-        $("#viewerPaymentStatus").className = "pill yes";
-      }
-      alert("Payment status updated to: Payment Verified / Paid");
-      renderOrdersTable();
-      closeScreenshotViewerModal();
-    } catch (err) {
-      alert("Failed to update payment status: " + err.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Mark Payment Verified";
-    }
-  });
-}
 
 function openOrderModal(id) {
   const o = ORDERS.find(x => x.id === id);
@@ -862,32 +748,7 @@ function openOrderModal(id) {
       </div>
       ${o.upiUtr ? `<div style="font-size:.8rem; margin-bottom:6px;"><strong>UPI Reference / UTR:</strong> <code>${o.upiUtr}</code></div>` : ""}
       
-      ${o.paymentMethod === "UPI" ? `
-        <div style="margin:10px 0; padding:10px; background:#fff; border-radius:8px; border:1px solid var(--beige);">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <strong style="font-size:.78rem;">Payment Screenshot Evidence:</strong>
-            <span class="pill ${o.paymentScreenshot ? 'yes' : 'no'}" style="font-size:.68rem;">${o.paymentScreenshot ? 'Screenshot Uploaded' : 'Screenshot Not Uploaded'}</span>
-          </div>
-          ${o.paymentScreenshot ? `
-            <div style="display:flex; align-items:center; gap:12px; margin-top:6px;">
-              <img src="${o.paymentScreenshot}" alt="Payment Evidence" id="modalThumbPreview" style="width:70px; height:70px; border-radius:8px; border:1px solid var(--beige); object-fit:cover; cursor:pointer;" onerror="this.style.display='none'">
-              <div style="flex:1;">
-                <button type="button" class="btn outline sm" id="btnModalViewScreenshot" style="font-size:.75rem; padding:4px 10px;">View Payment Screenshot</button>
-                ${o.paymentScreenshotDrive ? `
-                  <div style="margin-top:4px; font-size:.72rem; color:#1d4ed8;">
-                    <strong>Google Drive:</strong> ${o.paymentScreenshotDrive.fileName || 'Screenshot'}
-                    <a href="${o.paymentScreenshotDrive.webViewLink || o.paymentScreenshot}" target="_blank" style="margin-left:6px; color:#2563eb; text-decoration:underline;">Open in Drive ↗</a>
-                  </div>
-                ` : `
-                  <div style="font-size:.7rem; opacity:.7; margin-top:4px;">Inspect full image with Order ID and amount</div>
-                `}
-              </div>
-            </div>
-          ` : `
-            <div style="font-size:.78rem; color:#b91c1c; margin-top:4px;">No payment screenshot uploaded yet by customer.</div>
-          `}
-        </div>
-      ` : ""}
+
 
       <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
         <select id="adminUpdatePaymentStatusSelect" style="padding:6px 10px; font-size:.8rem; border-radius:8px; border:1px solid var(--beige);">
@@ -921,12 +782,7 @@ function openOrderModal(id) {
   $("#orderModalOverlay").classList.add("open");
   $("#closeOrderModal").addEventListener("click", () => $("#orderModalOverlay").classList.remove("open"));
 
-  if ($("#btnModalViewScreenshot")) {
-    $("#btnModalViewScreenshot").addEventListener("click", () => openScreenshotViewerModal(o));
-  }
-  if ($("#modalThumbPreview")) {
-    $("#modalThumbPreview").addEventListener("click", () => openScreenshotViewerModal(o));
-  }
+
 
   if ($("#btnAdminSavePaymentStatus")) {
     $("#btnAdminSavePaymentStatus").addEventListener("click", async () => {
@@ -1254,9 +1110,7 @@ async function loadSettingsForm() {
   if ($("#setFooterText")) $("#setFooterText").value = s.footerText || "";
   if ($("#setGoogleDriveFolderUrl")) $("#setGoogleDriveFolderUrl").value = s.googleDriveFolderUrl || "";
   if ($("#setGoogleDriveScriptUrl")) $("#setGoogleDriveScriptUrl").value = s.googleDriveScriptUrl || "";
-  if ($("#setCloudinaryCloudName")) $("#setCloudinaryCloudName").value = s.cloudinaryCloudName || "";
-  if ($("#setCloudinaryUploadPreset")) $("#setCloudinaryUploadPreset").value = s.cloudinaryUploadPreset || "";
-  if ($("#setImgbbApiKey")) $("#setImgbbApiKey").value = s.imgbbApiKey || "";
+
 
   updateDriveConfigUI(s.googleDriveFolderUrl || "", s.googleDriveScriptUrl || "");
 }
@@ -1374,36 +1228,13 @@ if ($("#saveSettingsBtn")) {
       footerText: $("#setFooterText").value.trim(),
       googleDriveFolderUrl: folderUrl,
       googleDriveFolderId: extractGoogleDriveFolderId(folderUrl) || "",
-      googleDriveScriptUrl: $("#setGoogleDriveScriptUrl")?.value.trim() || "",
-      cloudinaryCloudName: $("#setCloudinaryCloudName")?.value.trim() || "",
-      cloudinaryUploadPreset: $("#setCloudinaryUploadPreset")?.value.trim() || "",
-      imgbbApiKey: $("#setImgbbApiKey")?.value.trim() || ""
+      googleDriveScriptUrl: $("#setGoogleDriveScriptUrl")?.value.trim() || ""
     };
     try {
       await setDoc(doc(db, "settings", "business"), data, { merge: true });
       alert("Settings saved successfully.");
     } catch (e) {
       alert("Could not save settings: " + e.message);
-    }
-  });
-}
-
-if ($("#saveImageHostSettingsBtn")) {
-  $("#saveImageHostSettingsBtn").addEventListener("click", async () => {
-    if (sessionStorage.getItem("blume_admin_auth") !== "true") {
-      alert("Unauthorized: Only authenticated admins can modify store settings.");
-      return;
-    }
-    const data = {
-      cloudinaryCloudName: $("#setCloudinaryCloudName")?.value.trim() || "",
-      cloudinaryUploadPreset: $("#setCloudinaryUploadPreset")?.value.trim() || "",
-      imgbbApiKey: $("#setImgbbApiKey")?.value.trim() || ""
-    };
-    try {
-      await setDoc(doc(db, "settings", "business"), data, { merge: true });
-      alert("Image hosting settings saved successfully.");
-    } catch (e) {
-      alert("Could not save image hosting settings: " + e.message);
     }
   });
 }
