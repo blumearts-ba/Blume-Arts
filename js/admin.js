@@ -1186,35 +1186,28 @@ async function compressQrCodeImage(file) {
   });
 }
 
-function updateAdminUpiQrUI(qrUrl, updatedAt, fileId) {
+function updateAdminUpiQrUI(qrUrl, updatedAt, fileSize) {
   currentConfiguredQrUrl = qrUrl || "";
   const preview = $("#adminUpiQrPreview");
   const emptyText = $("#adminUpiQrEmptyText");
   const statusPill = $("#adminUpiQrStatusPill");
   const metaText = $("#adminUpiQrMetaText");
 
-  if (qrUrl || fileId) {
-    const effectiveSrc = qrUrl || (fileId ? `https://lh3.googleusercontent.com/d/${fileId}` : "");
+  if (qrUrl) {
     if (preview) {
-      preview.src = effectiveSrc;
+      preview.src = qrUrl;
       preview.style.display = "block";
-      preview.onerror = () => {
-        if (fileId && !preview.dataset.triedFallback) {
-          preview.dataset.triedFallback = "true";
-          preview.src = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
-        }
-      };
     }
     if (emptyText) emptyText.style.display = "none";
     if (statusPill) {
-      statusPill.textContent = "Active (Google Drive)";
+      statusPill.textContent = "Active (Firestore)";
       statusPill.style.background = "#def7ec";
       statusPill.style.color = "#03543f";
     }
     if (metaText) {
       const dt = updatedAt ? new Date(updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Configured";
-      const idStr = fileId ? ` • ID: ${fileId}` : "";
-      metaText.textContent = `Google Drive QR (${dt}${idStr})`;
+      const sizeStr = fileSize ? ` • ${(fileSize / 1024).toFixed(1)} KB` : "";
+      metaText.textContent = `Firestore QR (${dt}${sizeStr})`;
     }
   } else {
     if (preview) {
@@ -1251,7 +1244,7 @@ async function loadSettingsForm() {
   if ($("#setGoogleDriveFolderUrl")) $("#setGoogleDriveFolderUrl").value = s.googleDriveFolderUrl || "";
   if ($("#setGoogleDriveScriptUrl")) $("#setGoogleDriveScriptUrl").value = s.googleDriveScriptUrl || "";
 
-  // Check QR Code metadata in settings/business or settings/upi_qr
+  // Load QR Code directly from Firestore settings/upi_qr or settings/business
   let qrDoc = null;
   try {
     const qrSnap = await getDoc(doc(db, "settings", "upi_qr"));
@@ -1262,12 +1255,12 @@ async function loadSettingsForm() {
     console.warn("Could not load settings/upi_qr:", err.message);
   }
 
-  const qrFileId = qrDoc?.driveFileId || s.upiQrDriveFileId || "";
-  const qrUrl = qrDoc?.imageUrl || s.upiQrImageUrl || (qrFileId ? `https://lh3.googleusercontent.com/d/${qrFileId}` : "");
+  const qrUrl = qrDoc?.imageBase64 || qrDoc?.imageUrl || s.upiQrImageUrl || "";
   const updateTime = qrDoc?.updatedAt?.toDate ? qrDoc.updatedAt.toDate().toISOString() : (s.upiQrUpdatedAt || "");
+  const fileSize = qrDoc?.fileSize || null;
 
-  if (qrUrl || qrFileId) {
-    updateAdminUpiQrUI(qrUrl, updateTime, qrFileId);
+  if (qrUrl) {
+    updateAdminUpiQrUI(qrUrl, updateTime, fileSize);
   } else {
     updateAdminUpiQrUI("", "");
   }
@@ -1330,7 +1323,7 @@ if ($("#adminUpiQrFileInput")) {
       statusMsg.style.background = "#e0f2fe";
       statusMsg.style.color = "#0369a1";
       statusMsg.style.border = "1px solid #bae6fd";
-      statusMsg.textContent = "Preparing QR code image for Google Drive upload...";
+      statusMsg.textContent = "Optimizing QR code image for database storage...";
     }
     if (saveBtn) {
       saveBtn.disabled = true;
@@ -1354,11 +1347,11 @@ if ($("#adminUpiQrFileInput")) {
         statusMsg.style.background = "#def7ec";
         statusMsg.style.color = "#03543f";
         statusMsg.style.border = "1px solid #84e1bc";
-        statusMsg.innerHTML = `✓ QR Code ready (${kbSize} KB). Click Save to upload directly to your Google Drive folder.`;
+        statusMsg.innerHTML = `✓ QR Code ready (${kbSize} KB). Valid for Firestore database storage. Click Save to store.`;
       }
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = "Save UPI QR to Google Drive";
+        saveBtn.textContent = "Save / Update UPI QR Code";
       }
     } catch (err) {
       console.error("QR Code processing error:", err);
@@ -1381,7 +1374,7 @@ if ($("#adminUpiQrFileInput")) {
   });
 }
 
-// Admin UPI QR Code Upload / Save Handler (Google Drive)
+// Admin UPI QR Code Upload / Save Handler (Firebase Firestore ONLY)
 if ($("#btnSaveUpiQr")) {
   $("#btnSaveUpiQr").addEventListener("click", async () => {
     if (sessionStorage.getItem("blume_admin_auth") !== "true") {
@@ -1390,20 +1383,7 @@ if ($("#btnSaveUpiQr")) {
     }
 
     if (!adminSelectedQrData || !adminSelectedQrData.dataUrl) {
-      alert("Please select a QR code image to upload.");
-      return;
-    }
-
-    const folderUrl = $("#setGoogleDriveFolderUrl")?.value.trim() || DEFAULT_SETTINGS.googleDriveFolderUrl;
-    const scriptUrl = $("#setGoogleDriveScriptUrl")?.value.trim() || DEFAULT_SETTINGS.googleDriveScriptUrl;
-    const folderId = extractGoogleDriveFolderId(folderUrl);
-
-    if (!folderId) {
-      alert("Google Drive Folder URL is missing or invalid. Please configure your Google Drive Folder link in the Google Drive Destination section below.");
-      return;
-    }
-    if (!scriptUrl) {
-      alert("Google Apps Script Web App URL is missing. Please configure your Web App URL in the Google Drive Destination section below.");
+      alert("Please select a valid QR code image first.");
       return;
     }
 
@@ -1416,82 +1396,54 @@ if ($("#btnSaveUpiQr")) {
     const statusMsg = $("#adminUpiQrStatusMsg");
 
     btn.disabled = true;
-    btn.textContent = "Uploading to Google Drive...";
+    btn.textContent = "Saving to Database...";
     if (progressWrap) progressWrap.style.display = "block";
-    if (progressFill) progressFill.style.width = "35%";
+    if (progressFill) progressFill.style.width = "40%";
     if (statusMsg) {
       statusMsg.style.display = "block";
       statusMsg.style.background = "#e0f2fe";
       statusMsg.style.color = "#0369a1";
       statusMsg.style.border = "1px solid #bae6fd";
-      statusMsg.textContent = "Uploading QR code image to your Google Drive folder...";
+      statusMsg.textContent = "Writing QR code to Firestore database...";
     }
 
     const previousWorkingQr = currentConfiguredQrUrl;
 
     try {
-      const payload = {
-        folderId: folderId,
-        base64Data: adminSelectedQrData.dataUrl,
-        fileName: adminSelectedQrFile?.name || "UPI_PAYMENT_QR.png",
-        mimeType: adminSelectedQrData.mimeType || "image/png",
-        orderId: "ADMIN_UPI_QR",
-        type: "upi_qr"
+      // 1. Save Base64 data directly into dedicated document: settings/upi_qr
+      const qrDocRef = doc(db, "settings", "upi_qr");
+      const qrPayload = {
+        imageBase64: adminSelectedQrData.dataUrl,
+        contentType: adminSelectedQrData.mimeType,
+        fileName: adminSelectedQrFile?.name || "upi-qr.png",
+        fileSize: adminSelectedQrData.byteSize,
+        dimensions: `${adminSelectedQrData.width}x${adminSelectedQrData.height}`,
+        updatedAt: serverTimestamp()
       };
 
-      const res = await fetch(scriptUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload)
-      });
-
-      const result = await res.json();
-      if (!result || !result.success) {
-        throw new Error(result?.error || "Google Drive upload service rejected the file.");
-      }
+      await setDoc(qrDocRef, qrPayload);
 
       if (progressFill) progressFill.style.width = "85%";
 
-      const fileId = result.fileId;
-      const directImageUrl = result.directImageUrl || `https://lh3.googleusercontent.com/d/${fileId}`;
-      const webViewLink = result.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+      // 2. Update settings/business with metadata reference and image URL
       const nowIso = new Date().toISOString();
-
-      // Save only file reference & metadata in Firestore (no Base64 binaries in Firestore)
-      const updateData = {
+      await setDoc(doc(db, "settings", "business"), {
         hasUpiQr: true,
-        upiQrDriveFileId: fileId,
-        upiQrImageUrl: directImageUrl,
-        upiQrWebViewLink: webViewLink,
-        upiQrFileName: result.fileName || "UPI_PAYMENT_QR.png",
+        upiQrImageUrl: adminSelectedQrData.dataUrl,
         upiQrUpdatedAt: nowIso
-      };
-
-      await setDoc(doc(db, "settings", "business"), updateData, { merge: true });
-
-      try {
-        await setDoc(doc(db, "settings", "upi_qr"), {
-          driveFileId: fileId,
-          imageUrl: directImageUrl,
-          webViewLink: webViewLink,
-          fileName: result.fileName || "UPI_PAYMENT_QR.png",
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      } catch (subErr) {
-        console.warn("Notice updating settings/upi_qr doc:", subErr.message);
-      }
+      }, { merge: true });
 
       if (progressFill) progressFill.style.width = "100%";
 
-      currentConfiguredQrUrl = directImageUrl;
-      updateAdminUpiQrUI(directImageUrl, nowIso, fileId);
+      currentConfiguredQrUrl = adminSelectedQrData.dataUrl;
+      updateAdminUpiQrUI(currentConfiguredQrUrl, nowIso, adminSelectedQrData.byteSize);
 
       if (statusMsg) {
         statusMsg.style.display = "block";
         statusMsg.style.background = "#def7ec";
         statusMsg.style.color = "#03543f";
         statusMsg.style.border = "1px solid #84e1bc";
-        statusMsg.innerHTML = `✓ UPI QR code uploaded to Google Drive successfully! (File ID: <code>${fileId}</code>). Customers can now view and download this QR code at checkout.`;
+        statusMsg.innerHTML = "✓ UPI QR code saved successfully in Firestore database! Customers can now scan and download this QR code at checkout.";
       }
 
       adminSelectedQrFile = null;
@@ -1500,17 +1452,18 @@ if ($("#btnSaveUpiQr")) {
       btn.textContent = "Save / Update UPI QR Code";
       btn.disabled = true;
     } catch (err) {
-      console.error("Google Drive UPI QR upload error:", err);
+      console.error("UPI QR Firestore save error:", err);
+      // Retain previous working QR if update fails
       updateAdminUpiQrUI(previousWorkingQr);
       if (statusMsg) {
         statusMsg.style.display = "block";
         statusMsg.style.background = "#fde8e8";
         statusMsg.style.color = "#9b1c1c";
         statusMsg.style.border = "1px solid #f8b4b4";
-        statusMsg.textContent = "Upload Failed: " + err.message + " (Retained previous QR code).";
+        statusMsg.textContent = "Database Save Failed: " + err.message + " (Retained previous working QR code).";
       }
       btn.disabled = false;
-      btn.textContent = "Retry Google Drive Upload";
+      btn.textContent = "Retry Saving QR Code";
     } finally {
       isSavingUpiQr = false;
       if (progressWrap) progressWrap.style.display = "none";

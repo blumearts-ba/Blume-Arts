@@ -1518,40 +1518,36 @@ if ($("#btnChoiceManual")) {
 let cachedUpiQrData = null;
 
 async function getOrFetchUpiQr() {
-  if (cachedUpiQrData && (cachedUpiQrData.imageUrl || cachedUpiQrData.driveFileId)) {
+  if (cachedUpiQrData && (cachedUpiQrData.imageBase64 || cachedUpiQrData.imageUrl)) {
     return cachedUpiQrData;
   }
 
-  // 1. Check SETTINGS loaded from settings/business
-  if (SETTINGS.upiQrDriveFileId || SETTINGS.upiQrImageUrl) {
-    const fileId = SETTINGS.upiQrDriveFileId || "";
-    const directUrl = SETTINGS.upiQrImageUrl || (fileId ? `https://lh3.googleusercontent.com/d/${fileId}` : "");
-    cachedUpiQrData = {
-      driveFileId: fileId,
-      imageUrl: directUrl,
-      webViewLink: SETTINGS.upiQrWebViewLink || (fileId ? `https://drive.google.com/file/d/${fileId}/view` : "")
-    };
-    return cachedUpiQrData;
-  }
-
-  // 2. Fallback query to settings/upi_qr document
+  // 1. Fetch from dedicated settings/upi_qr document in Firestore
   try {
     const qrSnap = await getDoc(doc(db, "settings", "upi_qr"));
     if (qrSnap.exists()) {
       const qd = qrSnap.data();
-      const fileId = qd.driveFileId || "";
-      const directUrl = qd.imageUrl || (fileId ? `https://lh3.googleusercontent.com/d/${fileId}` : "") || qd.imageBase64 || "";
-      if (directUrl || fileId) {
+      const qrDataUrl = qd.imageBase64 || qd.imageUrl || "";
+      if (qrDataUrl) {
         cachedUpiQrData = {
-          driveFileId: fileId,
-          imageUrl: directUrl,
-          webViewLink: qd.webViewLink || (fileId ? `https://drive.google.com/file/d/${fileId}/view` : "")
+          imageBase64: qrDataUrl,
+          imageUrl: qrDataUrl,
+          fileSize: qd.fileSize
         };
         return cachedUpiQrData;
       }
     }
   } catch (e) {
     console.warn("Could not fetch settings/upi_qr:", e.message);
+  }
+
+  // 2. Fallback to settings/business (cached in SETTINGS)
+  if (SETTINGS.upiQrImageUrl) {
+    cachedUpiQrData = {
+      imageBase64: SETTINGS.upiQrImageUrl,
+      imageUrl: SETTINGS.upiQrImageUrl
+    };
+    return cachedUpiQrData;
   }
 
   return null;
@@ -1576,20 +1572,12 @@ async function refreshUpiStepUI() {
   if (recipientDisplay) recipientDisplay.textContent = SETTINGS.businessName || "Blume Arts";
 
   const qrData = await getOrFetchUpiQr();
-  const configuredQr = qrData?.imageUrl || "";
+  const configuredQr = qrData?.imageBase64 || qrData?.imageUrl || "";
 
   if (configuredQr) {
     if (missingAlert) missingAlert.style.display = "none";
     if (qrWrap) qrWrap.style.display = "block";
-    if (qrImg) {
-      qrImg.src = configuredQr;
-      qrImg.onerror = () => {
-        if (qrData.driveFileId && !qrImg.dataset.triedFallback) {
-          qrImg.dataset.triedFallback = "true";
-          qrImg.src = `https://drive.google.com/thumbnail?id=${qrData.driveFileId}&sz=w800`;
-        }
-      };
-    }
+    if (qrImg) qrImg.src = configuredQr;
     if (downloadBtn) downloadBtn.disabled = false;
     if (fileInput) fileInput.disabled = false;
 
@@ -1617,16 +1605,12 @@ async function refreshUpiStepUI() {
 
 async function downloadUpiQrImage() {
   const qrData = await getOrFetchUpiQr();
-  const qrUrl = qrData?.imageUrl || "";
-  if (!qrUrl && !qrData?.driveFileId) {
+  const qrUrl = qrData?.imageBase64 || qrData?.imageUrl || "";
+  if (!qrUrl) {
     toast("No UPI QR code configured.");
     return;
   }
   const filename = "UPI-Payment-QR.png";
-  const fileId = qrData?.driveFileId;
-  const downloadUrl = fileId
-    ? `https://drive.google.com/uc?export=download&id=${fileId}`
-    : qrUrl;
 
   try {
     toast("Downloading QR code...");
@@ -1653,37 +1637,26 @@ async function downloadUpiQrImage() {
       return;
     }
 
-    // Attempt direct blob download
-    try {
-      const res = await fetch(downloadUrl, { mode: "cors" });
-      if (res.ok) {
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
-        toast("QR code downloaded!");
-        return;
-      }
-    } catch (corsErr) {
-      console.warn("Direct blob fetch failed, triggering fallback download link:", corsErr.message);
-    }
-
+    // Direct blob download if regular URL
+    const res = await fetch(qrUrl, { mode: "cors" });
+    if (!res.ok) throw new Error("Network response error " + res.status);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.target = "_blank";
+    link.href = blobUrl;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast("Opening QR code download link...");
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+    toast("QR code downloaded!");
   } catch (err) {
-    console.warn("Direct download failed, opening in new tab:", err);
-    window.open(downloadUrl, "_blank");
+    console.warn("Direct blob download failed, falling back to direct link:", err);
+    const link = document.createElement("a");
+    link.href = qrUrl;
+    link.target = "_blank";
+    link.download = filename;
+    link.click();
   }
 }
 
