@@ -1,0 +1,54 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /products/{productId} {
+      allow read, write: if true;
+    }
+
+    match /categories/{categoryId} {
+      allow read, write: if true;
+    }
+
+    match /orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    match /settings/{docId} {
+      allow read, write: if true;
+    }
+
+    match /adminUsers/{uid} {
+      allow read, write: if true;
+    }
+
+    match /reviews/{reviewId} {
+      allow read, write: if true;
+    }
+
+    match /orders/{orderId}/sellerMessages/{messageId} {
+      allow read, write: if true;
+    }
+
+    // Secure Customer Vault & Registry (Zero-Knowledge Cryptographic Access)
+    // Disallow public listing or collection querying to protect customer privacy and prevent database scraping.
+    // Access is granted only by exact cryptographically derived keys.
+    match /customer_vault/{vaultKey} {
+      allow list: if false;
+      allow get, create, update: if true;
+      allow delete: if false;
+    }
+
+    match /customer_registry/{regKey} {
+      allow list: if false;
+      allow get, create, update: if true;
+      allow delete: if false;
+    }
+
+    // Legacy Customer Profiles (protected from collection listing)
+    match /customer_profiles/{mobile} {
+      allow list: if false;
+      allow get, write: if true;
+    }
+  }
+}

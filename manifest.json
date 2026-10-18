@@ -1,0 +1,14 @@
+{
+  "name": "Blume Arts - Handmade With Love",
+  "short_name": "Blume Arts",
+  "description": "Handmade pipe cleaner flowers and artistic creations, crafted with love.",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#fbf4ee",
+  "theme_color": "#c98a94",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
