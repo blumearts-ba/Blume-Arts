@@ -1559,13 +1559,45 @@ function setupPaymentMethodControls() {
   setMethod(selectedPaymentMethod);
 }
 
-// Wire single primary Pay button for Google Pay / UPI
-if ($("#btnPayUpiGpay")) {
-  $("#btnPayUpiGpay").addEventListener("click", async () => {
-    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) return;
-    await submitOrder("UPI");
-  });
+// Wire UPI Multi-App & universal payment buttons
+function setupUpiPayButtons() {
+  const wireBtn = (btnId, appName) => {
+    const btn = $(btnId);
+    if (!btn) return;
+    btn.onclick = async () => {
+      if (!validateStep(1) || !validateStep(2) || !validateStep(3)) return;
+      await submitOrder("UPI", appName);
+    };
+  };
+
+  wireBtn("#btnPayUpiUniversal", "universal");
+  wireBtn("#btnPayGpay", "gpay");
+  wireBtn("#btnPayPhonePe", "phonepe");
+  wireBtn("#btnPayPaytm", "paytm");
+  wireBtn("#btnPayBhim", "bhim");
+  wireBtn("#btnPayUpiGpay", "gpay");
+
+  if ($("#btnCopyRecipientUpi")) {
+    $("#btnCopyRecipientUpi").onclick = () => {
+      const vpa = $("#upiRecipientVpaDisplay")?.textContent || (SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis");
+      navigator.clipboard.writeText(vpa).then(() => toast("Recipient UPI ID copied to clipboard!")).catch(() => toast(`UPI ID: ${vpa}`));
+    };
+  }
+
+  if ($("#btnCopyFallbackUpi")) {
+    $("#btnCopyFallbackUpi").onclick = () => {
+      const vpa = $("#fallbackUpiIdDisplay")?.textContent || (SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis");
+      navigator.clipboard.writeText(vpa).then(() => toast("Recipient UPI ID copied to clipboard!")).catch(() => toast(`UPI ID: ${vpa}`));
+    };
+  }
+
+  if ($("#btnCloseFallbackUpi")) {
+    $("#btnCloseFallbackUpi").onclick = () => {
+      $("#upiFallbackModalOverlay")?.classList.remove("open");
+    };
+  }
 }
+setupUpiPayButtons();
 
 function showStep(n) {
   currentStep = n;
@@ -1677,6 +1709,21 @@ function renderFinalSummary() {
     </div>
     ${$("#specialNotes").value.trim() ? `<div class="summary-block"><h4>Special Instructions</h4><p>${removeEmojis($("#specialNotes").value)}</p></div>` : ""}
   `;
+
+  // Dynamic UPI Details & Dynamic QR Code Generation
+  const upiId = SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis";
+  const storeName = SETTINGS.businessName || "Blume Arts";
+  const orderAmount = Number(total || 0).toFixed(2);
+  const upiString = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(storeName)}&am=${orderAmount}&cu=INR&tn=${encodeURIComponent("Blume Arts Order")}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(upiString)}`;
+
+  if ($("#upiRecipientVpaDisplay")) $("#upiRecipientVpaDisplay").textContent = upiId;
+  if ($("#upiRecipientNameDisplay")) $("#upiRecipientNameDisplay").textContent = storeName;
+  if ($("#upiTotalDisplay")) $("#upiTotalDisplay").textContent = money(total);
+  if ($("#upiDynamicQrImg")) $("#upiDynamicQrImg").src = qrUrl;
+  if ($("#fallbackUpiIdDisplay")) $("#fallbackUpiIdDisplay").textContent = upiId;
+  if ($("#fallbackUpiAmountDisplay")) $("#fallbackUpiAmountDisplay").textContent = orderAmount;
+  if ($("#fallbackQrImg")) $("#fallbackQrImg").src = qrUrl;
 }
 
 function fullAddress() {
@@ -1709,7 +1756,7 @@ function getCleanWhatsappPhone(rawPhone) {
 function buildWhatsappMessage(orderId, items, subtotal, delivery, total) {
   const storeName = removeEmojis(SETTINGS.businessName || "BLUME ARTS").toUpperCase();
   const isUpi = (selectedPaymentMethod === "UPI");
-  const utr = $("#upiUtrNumber")?.value.trim();
+  const payerRef = ($("#upiPayerUtr")?.value || $("#upiUtrNumber")?.value || "").trim();
 
   let msg = `==================\n${storeName}\nNEW ORDER\n==================\n\n`;
   msg += `Order ID: ${orderId}\n\nORDER DETAILS:\n\n`;
@@ -1717,8 +1764,8 @@ function buildWhatsappMessage(orderId, items, subtotal, delivery, total) {
     msg += `${idx + 1}. ${removeEmojis(i.name)}${i.color ? " (" + removeEmojis(i.color) + ")" : ""}\nQuantity: ${i.qty}\nPrice: ${money(i.price)}\nSubtotal: ${money(i.price * i.qty)}\n\n`;
   });
   msg += `==================\nSubtotal: ${money(subtotal)}\nDelivery Charge: ${money(delivery)}\nFINAL TOTAL: ${money(total)}\n\n`;
-  msg += `PAYMENT METHOD: ${isUpi ? "Online UPI (Payment Pending Verification)" : "Cash on Delivery"}\n`;
-  if (isUpi && utr) msg += `UPI Reference / UTR: ${utr}\n`;
+  msg += `PAYMENT METHOD: ${isUpi ? "Online UPI (Payment Review Pending)" : "Cash on Delivery"}\n`;
+  if (isUpi && payerRef) msg += `CUSTOMER UPI / UTR REF: ${payerRef}\n`;
   msg += `\nCUSTOMER DETAILS:\n\n`;
   msg += `Name: ${removeEmojis($("#custName")?.value || "")}\nMobile: ${$("#custMobile")?.value || ""}\nWhatsApp: ${$("#custWhatsapp")?.value || ""}\nEmail: ${$("#custEmail")?.value || "N/A"}\n\nDELIVERY ADDRESS:\n\n${fullAddress()}\n\n`;
   msg += `SPECIAL INSTRUCTIONS:\n\n${removeEmojis($("#specialNotes")?.value || "").trim() || "None"}\n\n`;
@@ -1730,7 +1777,7 @@ function resetCheckoutForm() {
   const ids = [
     "custName", "custMobile", "custWhatsapp", "custEmail",
     "addrHouse", "addrStreet", "addrArea", "addrCity", "addrDistrict", "addrState", "addrPincode",
-    "specialNotes", "coAuthMobile", "coAuthPin", "guestCreatePin", "guestConfirmPin", "upiUtrNumber"
+    "specialNotes", "coAuthMobile", "coAuthPin", "guestCreatePin", "guestConfirmPin", "upiUtrNumber", "upiPayerUtr"
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
@@ -1748,7 +1795,7 @@ function resetCheckoutForm() {
 
 let isSubmittingOrder = false;
 
-async function submitOrder(customPaymentMethod = null) {
+async function submitOrder(customPaymentMethod = null, targetApp = null) {
   if (isSubmittingOrder) {
     console.warn("Order submission already in progress.");
     return;
@@ -1764,17 +1811,16 @@ async function submitOrder(customPaymentMethod = null) {
   const isUpi = (method === "UPI");
   const paymentMethod = isUpi ? "UPI" : "COD";
   const paymentStatus = isUpi ? "Payment Review Pending" : "Pending (Cash on Delivery)";
+  const payerUtr = ($("#upiPayerUtr")?.value || $("#upiUtrNumber")?.value || "").trim();
 
   const nextBtn = $("#nextStep");
-  const upiPayBtn = $("#btnPayUpiGpay");
   if (nextBtn) {
     nextBtn.disabled = true;
     nextBtn.textContent = "Processing Order...";
   }
-  if (upiPayBtn) {
-    upiPayBtn.disabled = true;
-    if ($("#btnPayUpiGpayText")) $("#btnPayUpiGpayText").textContent = "Preparing Google Pay...";
-  }
+  document.querySelectorAll("#btnPayUpiUniversal, #btnPayGpay, #btnPayPhonePe, #btnPayPaytm, #btnPayBhim, #btnPayUpiGpay").forEach(b => {
+    if (b) b.disabled = true;
+  });
 
   let orderDocId = null;
 
@@ -1835,11 +1881,16 @@ async function submitOrder(customPaymentMethod = null) {
         paymentMethod,
         paymentStatus,
         paymentScreenshot: "",
+        recipientUpiId: isUpi ? (SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis") : "",
+        payerUtr: isUpi ? payerUtr : "",
+        payerUpiId: isUpi ? payerUtr : "",
         statusHistory: [
           {
             status: "Order Placed",
             timestamp: new Date().toISOString(),
-            note: isUpi ? "Order placed with Online UPI (Payment Review Pending)" : "Order placed with Cash on Delivery"
+            note: isUpi 
+              ? `Order placed with Online UPI (Payment Review Pending - awaiting bank verification${payerUtr ? `, Ref: ${payerUtr}` : ""})` 
+              : "Order placed with Cash on Delivery (Pending)"
           }
         ],
         notes: $("#specialNotes").value.trim() || "",
@@ -1972,26 +2023,40 @@ async function submitOrder(customPaymentMethod = null) {
     $("#confirmOverlay").classList.add("open");
     document.body.style.overflow = "hidden";
 
-    // If UPI selected: trigger Google Pay deep link
+    // If UPI selected: trigger UPI deep link or target app
     if (isUpi) {
       const upiId = SETTINGS.upiId || DEFAULT_SETTINGS.upiId || "mohanraj88978@okaxis";
       const storeName = encodeURIComponent(SETTINGS.businessName || "Blume Arts");
       const orderAmount = Number(total || 0).toFixed(2);
       const orderNote = encodeURIComponent(`Blume Arts Order ${orderId}`);
-      const orderRef = encodeURIComponent(orderId);
 
-      // Clean universal UPI link (supported across GPay, PhonePe, Paytm, and bank apps)
-      const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
+      // Universal standard UPI payload
+      const standardUpiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(standardUpiLink)}`;
+
+      let upiDeepLink = standardUpiLink;
+      if (targetApp === "phonepe") {
+        upiDeepLink = `phonepe://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
+      } else if (targetApp === "paytm") {
+        upiDeepLink = `paytmmp://pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
+      } else if (targetApp === "gpay") {
+        upiDeepLink = `tez://upi/pay?pa=${encodeURIComponent(upiId)}&pn=${storeName}&am=${orderAmount}&cu=INR&tn=${orderNote}`;
+      }
 
       // Open UPI deep link directly on click context
       const launchTime = Date.now();
-      window.location.href = upiDeepLink;
+      try {
+        window.location.href = upiDeepLink;
+      } catch (launchErr) {
+        console.warn("Direct URI launch failed:", launchErr);
+      }
 
-      // Provide fallback modal if GPay/UPI app could not open
+      // Provide fallback modal if UPI app could not open
       setTimeout(() => {
         if (Date.now() - launchTime < 2500) {
           if ($("#fallbackUpiIdDisplay")) $("#fallbackUpiIdDisplay").textContent = upiId;
           if ($("#fallbackUpiAmountDisplay")) $("#fallbackUpiAmountDisplay").textContent = orderAmount;
+          if ($("#fallbackQrImg")) $("#fallbackQrImg").src = qrUrl;
           $("#upiFallbackModalOverlay")?.classList.add("open");
         }
       }, 1500);
@@ -2014,10 +2079,9 @@ async function submitOrder(customPaymentMethod = null) {
       nextBtn.disabled = false;
       nextBtn.textContent = selectedPaymentMethod === "UPI" ? "Place Order & Pay via UPI" : "Confirm Order (Cash on Delivery)";
     }
-    if (upiPayBtn) {
-      upiPayBtn.disabled = false;
-      if ($("#btnPayUpiGpayText")) $("#btnPayUpiGpayText").textContent = "Pay with Google Pay";
-    }
+    document.querySelectorAll("#btnPayUpiUniversal, #btnPayGpay, #btnPayPhonePe, #btnPayPaytm, #btnPayBhim, #btnPayUpiGpay").forEach(b => {
+      if (b) b.disabled = false;
+    });
   }
 }
 

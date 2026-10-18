@@ -361,3 +361,96 @@ footer li a:hover{opacity:1; color:var(--gold);}
 .profile-tab-btn{transition:.25s ease;}
 .profile-tab-btn.active{background:var(--dusty-rose) !important; color:#fff !important; border-color:var(--dusty-rose) !important;}
 
+/* UPI MULTI-APP & QR PAYMENT STYLES */
+.upi-payment-container {
+  background: var(--cream);
+  border: 1.5px solid var(--beige);
+  border-radius: 14px;
+  padding: 18px 16px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.upi-recipient-box {
+  background: var(--white);
+  border: 1px solid var(--beige);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.upi-recipient-meta {
+  display: flex;
+  flex-direction: column;
+}
+.upi-recipient-meta .label {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  opacity: .7;
+  font-weight: 600;
+}
+.upi-recipient-meta .vpa {
+  font-family: monospace;
+  font-size: .95rem;
+  color: var(--brown);
+  font-weight: 700;
+}
+.upi-app-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+@media (max-width: 480px) {
+  .upi-app-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.upi-app-btn {
+  background: var(--white);
+  border: 1.5px solid var(--beige);
+  border-radius: 10px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all .2s ease;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--brown);
+}
+.upi-app-btn:hover {
+  border-color: var(--dusty-rose);
+  background: var(--ivory);
+  transform: translateY(-1px);
+}
+.upi-qr-card {
+  background: var(--white);
+  border: 1px solid var(--beige);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 14px auto;
+  display: inline-block;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+.upi-qr-card img {
+  display: block;
+  margin: 0 auto 8px auto;
+  border-radius: 8px;
+}
+.upi-payer-section {
+  background: var(--white);
+  border: 1px solid var(--beige);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 14px;
+  text-align: left;
+}
+
