@@ -109,6 +109,68 @@ select.status-select{padding:6px 10px;border-radius:8px;border:1px solid var(--b
 .custom-field-row input{flex:1;}
 .img-preview{width:80px;height:80px;border-radius:10px;object-fit:cover;margin-top:8px;background:var(--blush);}
 
+/* Cancelled Order UI Styling */
+.order-row-cancelled {
+  background-color: rgba(254, 242, 242, 0.45) !important;
+  opacity: 0.68;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+.order-row-cancelled:hover {
+  opacity: 0.92;
+  background-color: rgba(254, 242, 242, 0.75) !important;
+}
+.order-row-cancelled .order-main-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: #ef4444;
+  filter: blur(0.25px);
+  color: #7f1d1d;
+  display: inline-block;
+}
+.badge-cancelled-customer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+.badge-cancelled-customer svg {
+  flex-shrink: 0;
+}
+.modal-cancelled-banner {
+  background: #fee2e2;
+  border: 1.5px solid #f87171;
+  color: #991b1b;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 0.84rem;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.modal-cancelled-banner strong {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 2px;
+}
+.modal-cancelled-banner .subtext {
+  font-size: 0.76rem;
+  opacity: 0.85;
+}
+.cancelled-order-item {
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+  opacity: 0.75;
+}
+
 /* Mobile Responsive Adjustments (360px - 430px & touch devices) */
 @media(max-width:800px){
   .admin-layout.active{grid-template-columns:1fr;padding-bottom:80px;}
