@@ -2679,9 +2679,44 @@ function renderTrackResult(o) {
     }
   });
 
+  const cancelBtn = $("#btnTrackCancelOrder");
+  if (cancelBtn) {
+    if (o.status === "Cancelled") {
+      cancelBtn.style.display = "inline-flex";
+      cancelBtn.disabled = true;
+      cancelBtn.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        <span>Order Cancelled</span>
+      `;
+      cancelBtn.title = "This order has been cancelled and cannot be cancelled again.";
+    } else if (o.status === "Delivered") {
+      cancelBtn.style.display = "none";
+      cancelBtn.disabled = true;
+    } else if (o.status === "Out for Delivery") {
+      cancelBtn.style.display = "none";
+      cancelBtn.disabled = true;
+    } else {
+      cancelBtn.style.display = "inline-flex";
+      cancelBtn.disabled = false;
+      cancelBtn.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        <span>Cancel Order</span>
+      `;
+      cancelBtn.title = "Cancel this order";
+    }
+  }
+
   const cancelBanner = $("#cancelledBanner");
   if (cancelBanner) {
-    cancelBanner.style.display = o.status === "Cancelled" ? "block" : "none";
+    if (o.status === "Cancelled") {
+      cancelBanner.style.display = "block";
+      const isCustomer = o.cancelledBy === "customer" || o.cancellationSource === "customer" || (Array.isArray(o.statusHistory) && o.statusHistory.some(h => h.status === "Cancelled" && h.source === "customer"));
+      cancelBanner.innerHTML = isCustomer
+        ? `⚠️ Order Cancelled by Customer. Reserved items have been safely restored to stock.`
+        : `⚠️ Order Status: Cancelled. Stock has been safely restored.`;
+    } else {
+      cancelBanner.style.display = "none";
+    }
   }
 
   // Render Status History Timeline with timestamps
@@ -2825,6 +2860,182 @@ function renderTrackResult(o) {
 
   wrap.style.display = "block";
   wrap.scrollIntoView({ behavior: "smooth" });
+}
+
+// ------------------------------------------------------------
+// CUSTOMER ORDER CANCELLATION (REAL-TIME FIRESTORE SYNC)
+// ------------------------------------------------------------
+async function cancelCustomerOrder(orderDocId, verificationData) {
+  if (!orderDocId) throw new Error("Invalid order ID.");
+
+  const orderRef = doc(db, "orders", orderDocId);
+
+  await runTransaction(db, async (transaction) => {
+    const orderSnap = await transaction.get(orderRef);
+    if (!orderSnap.exists()) {
+      throw new Error("Order not found in database.");
+    }
+
+    const orderData = orderSnap.data();
+
+    // 1. Security Authorization: check that verificationData matches this order
+    const mob = (orderData.mobile || "").replace(/\s/g, "");
+    const wa = (orderData.whatsapp || "").replace(/\s/g, "");
+    const pin = (orderData.address?.pincode || "").replace(/\s/g, "");
+    const cleanVerify = (verificationData || "").replace(/\s/g, "");
+
+    const isAuthorized = cleanVerify && (
+      mob.endsWith(cleanVerify) || 
+      wa.endsWith(cleanVerify) || 
+      pin === cleanVerify
+    );
+
+    if (!isAuthorized) {
+      throw new Error("Security verification failed: Details do not match this order.");
+    }
+
+    // 2. Workflow Eligibility: Disallow already cancelled, delivered, or out-for-delivery orders
+    if (orderData.status === "Cancelled") {
+      throw new Error("This order has already been cancelled.");
+    }
+    if (orderData.status === "Delivered") {
+      throw new Error("Delivered orders cannot be cancelled.");
+    }
+    if (orderData.status === "Out for Delivery") {
+      throw new Error("Orders out for delivery cannot be cancelled. Please contact Blume Arts support.");
+    }
+
+    // 3. Atomically restore product stock
+    if (Array.isArray(orderData.products)) {
+      for (const item of orderData.products) {
+        if (!item.id) continue;
+        const pRef = doc(db, "products", item.id);
+        const pSnap = await transaction.get(pRef);
+        if (pSnap.exists()) {
+          const pData = pSnap.data();
+          if (!pData.unlimitedStock) {
+            const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : (pData.stock || 0));
+            const newStock = currentStock + Number(item.qty || 1);
+            transaction.update(pRef, {
+              stockQuantity: newStock,
+              stock: newStock,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+      }
+    }
+
+    // 4. Record cancellation in status history with source: customer
+    const history = Array.isArray(orderData.statusHistory) ? [...orderData.statusHistory] : [];
+    history.push({
+      status: "Cancelled",
+      timestamp: new Date().toISOString(),
+      source: "customer",
+      note: "Cancelled by customer via Order Tracking"
+    });
+
+    // 5. Update the specific order document
+    transaction.update(orderRef, {
+      status: "Cancelled",
+      cancelledBy: "customer",
+      cancellationSource: "customer",
+      cancelledAt: serverTimestamp(),
+      statusHistory: history,
+      updatedAt: serverTimestamp()
+    });
+  });
+}
+
+// Cancel Order Button Triggers & Confirmation Modal Listeners
+if ($("#btnTrackCancelOrder")) {
+  $("#btnTrackCancelOrder").addEventListener("click", () => {
+    if (!currentTrackedOrder) return;
+    if (currentTrackedOrder.status === "Cancelled") {
+      toast("This order is already cancelled.");
+      return;
+    }
+    if (currentTrackedOrder.status === "Delivered") {
+      toast("Delivered orders cannot be cancelled.");
+      return;
+    }
+    if (currentTrackedOrder.status === "Out for Delivery") {
+      toast("Orders out for delivery cannot be cancelled.");
+      return;
+    }
+
+    const oId = currentTrackedOrder.orderId || currentTrackedOrder.id;
+    if ($("#cancelModalOrderIdText")) $("#cancelModalOrderIdText").textContent = `#${oId}`;
+    if ($("#cancelOrderErrorMsg")) $("#cancelOrderErrorMsg").style.display = "none";
+    if ($("#btnConfirmCancelOrder")) {
+      $("#btnConfirmCancelOrder").disabled = false;
+      $("#btnConfirmCancelOrder").textContent = "Confirm Cancellation";
+    }
+    if ($("#btnKeepOrder")) $("#btnKeepOrder").disabled = false;
+
+    $("#cancelOrderModalOverlay")?.classList.add("open");
+  });
+}
+
+if ($("#closeCancelModal")) {
+  $("#closeCancelModal").addEventListener("click", () => {
+    $("#cancelOrderModalOverlay")?.classList.remove("open");
+  });
+}
+
+if ($("#btnKeepOrder")) {
+  $("#btnKeepOrder").addEventListener("click", () => {
+    $("#cancelOrderModalOverlay")?.classList.remove("open");
+  });
+}
+
+if ($("#cancelOrderModalOverlay")) {
+  $("#cancelOrderModalOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "cancelOrderModalOverlay") {
+      $("#cancelOrderModalOverlay").classList.remove("open");
+    }
+  });
+}
+
+if ($("#btnConfirmCancelOrder")) {
+  $("#btnConfirmCancelOrder").addEventListener("click", async () => {
+    if (!currentTrackedOrder || !currentTrackedOrder.id) return;
+
+    const confirmBtn = $("#btnConfirmCancelOrder");
+    const keepBtn = $("#btnKeepOrder");
+    const errBox = $("#cancelOrderErrorMsg");
+
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Cancelling Order...";
+    if (keepBtn) keepBtn.disabled = true;
+    if (errBox) errBox.style.display = "none";
+
+    try {
+      const verifyInput = $("#trackVerifyInput")?.value.trim() || currentTrackedOrder.mobile || currentTrackedOrder.address?.pincode || "";
+      await cancelCustomerOrder(currentTrackedOrder.id, verifyInput);
+
+      // Successfully cancelled in database
+      $("#cancelOrderModalOverlay")?.classList.remove("open");
+      toast(`Order #${currentTrackedOrder.orderId} cancelled successfully.`);
+
+      // Update currentTrackedOrder immediately on customer interface
+      currentTrackedOrder.status = "Cancelled";
+      currentTrackedOrder.cancelledBy = "customer";
+      currentTrackedOrder.cancellationSource = "customer";
+      renderTrackResult(currentTrackedOrder);
+
+    } catch (err) {
+      console.error("Order cancellation error:", err);
+      if (errBox) {
+        errBox.textContent = err.message || "Failed to cancel order. Please try again.";
+        errBox.style.display = "block";
+      }
+      toast(err.message || "Failed to cancel order.");
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Confirm Cancellation";
+      if (keepBtn) keepBtn.disabled = false;
+    }
+  });
 }
 
 // ------------------------------------------------------------
