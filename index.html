@@ -9,9 +9,9 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
 <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json?v=2.0">
 <meta name="theme-color" content="#c98a94">
-<link rel="stylesheet" href="css/style.css?v=9.1">
+<link rel="stylesheet" href="css/style.css?v=9.2">
 </head>
 <body>
   
@@ -196,7 +196,13 @@
               <span class="payment-badge" id="trackPaymentStatusBadge">Pending Verification</span>
             </div>
           </div>
-          <span class="status-pill-badge" id="trackStatusBadge">Order Placed</span>
+          <div class="track-header-actions" style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+            <span class="status-pill-badge" id="trackStatusBadge">Order Placed</span>
+            <button type="button" class="btn-cancel-order-trigger" id="btnTrackCancelOrder" style="display:none;" aria-label="Cancel Order">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+              <span>Cancel Order</span>
+            </button>
+          </div>
         </div>
 
         <div class="track-timeline-wrap">
@@ -870,6 +876,35 @@
   </div>
 </div>
 
+<!-- CANCEL ORDER CONFIRMATION MODAL -->
+<div class="overlay" id="cancelOrderModalOverlay">
+  <div class="modal" style="max-width:440px;">
+    <button class="modal-close" id="closeCancelModal" aria-label="Close Cancel Modal">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+    <div style="padding:24px;">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+        <span style="display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; background:#fee2e2; color:#dc2626; flex-shrink:0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        </span>
+        <div>
+          <h3 style="margin:0; font-family:var(--serif); font-size:1.25rem; color:var(--brown);">Cancel Order</h3>
+          <span style="font-size:.74rem; opacity:.7; color:var(--brown);">Customer Order Cancellation</span>
+        </div>
+      </div>
+      <p style="font-size:1rem; font-weight:600; color:var(--brown); margin-bottom:8px;">Are you sure you want to cancel this order?</p>
+      <p id="cancelModalOrderDetails" style="font-size:.82rem; opacity:.85; line-height:1.5; margin-bottom:16px;">
+        Order <strong id="cancelModalOrderIdText">#</strong> will be cancelled. Any reserved items will be restored to store inventory.
+      </p>
+      <div id="cancelOrderErrorMsg" style="display:none; background:#fee2e2; border:1px solid #f87171; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:.8rem; margin-bottom:14px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" id="btnKeepOrder">Keep Order</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmCancelOrder">Confirm Cancellation</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- FLOATING WHATSAPP BUTTON -->
 <a href="https://wa.me/917397536605" id="floatingWaBtn" class="floating-whatsapp" target="_blank" rel="noopener noreferrer" aria-label="Chat on WhatsApp" title="Chat with Blume Arts on WhatsApp">
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
@@ -880,7 +915,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="js/app.js?v=13.1"></script>
+<script type="module" src="js/app.js?v=13.2"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
