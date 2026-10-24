@@ -305,17 +305,55 @@ async function loadSettings() {
   applySettingsToUI();
 }
 function applySettingsToUI() {
-  if ($("#contactPhone")) $("#contactPhone").textContent = SETTINGS.phone;
-  if ($("#contactEmail")) $("#contactEmail").textContent = SETTINGS.email;
-  if ($("#contactInsta")) $("#contactInsta").textContent = SETTINGS.instagram;
-  if ($("#footerPhone")) $("#footerPhone").textContent = SETTINGS.phone;
-  if ($("#footerEmail")) $("#footerEmail").textContent = SETTINGS.email;
-  if ($("#footerInsta")) { $("#footerInsta").textContent = SETTINGS.instagram; $("#footerInsta").href = SETTINGS.instagramUrl; }
+  const phoneText = SETTINGS.phone || "7397 536 605";
+  const cleanPhone = phoneText.replace(/[\s-]/g, "");
+  const telHref = "tel:" + (cleanPhone.startsWith("+") ? cleanPhone : (cleanPhone.startsWith("0") ? "+91" + cleanPhone.slice(1) : (cleanPhone.length === 10 ? "+91" + cleanPhone : cleanPhone)));
+  const mailHref = "mailto:" + (SETTINGS.email || "sumithasenthil777@gmail.com");
+  const instaHandle = SETTINGS.instagram || "@blume_arts07";
+  const instaHref = SETTINGS.instagramUrl || `https://instagram.com/${instaHandle.replace('@','')}`;
+
+  const rawWa = (SETTINGS.whatsapp || SETTINGS.phone || "7397536605").replace(/\D/g, "");
+  const waNumber = rawWa.startsWith("91") && rawWa.length === 12 ? rawWa : (rawWa.length === 10 ? "91" + rawWa : rawWa);
+  const waHref = `https://wa.me/${waNumber}`;
+
+  // Contact section cards
+  if ($("#contactPhone")) $("#contactPhone").textContent = phoneText;
+  if ($("#contactEmail")) $("#contactEmail").textContent = SETTINGS.email || "sumithasenthil777@gmail.com";
+  if ($("#contactInsta")) $("#contactInsta").textContent = instaHandle;
+
+  if ($("#contactCallCard")) $("#contactCallCard").href = telHref;
+  if ($("#contactEmailCard")) $("#contactEmailCard").href = mailHref;
+  if ($("#contactInstaCard")) {
+    $("#contactInstaCard").href = instaHref;
+    $("#contactInstaCard").target = "_blank";
+    $("#contactInstaCard").rel = "noopener noreferrer";
+  }
+
+  // Footer links
+  if ($("#footerPhone")) {
+    $("#footerPhone").textContent = phoneText;
+    $("#footerPhone").href = telHref;
+  }
+  if ($("#footerEmail")) {
+    $("#footerEmail").textContent = SETTINGS.email || "sumithasenthil777@gmail.com";
+    $("#footerEmail").href = mailHref;
+  }
+  if ($("#footerInsta")) {
+    $("#footerInsta").textContent = instaHandle;
+    $("#footerInsta").href = instaHref;
+    $("#footerInsta").target = "_blank";
+    $("#footerInsta").rel = "noopener noreferrer";
+  }
   if ($("#footerText")) $("#footerText").textContent = removeEmojis(SETTINGS.footerText || SETTINGS.description);
-  if ($("#callBtn")) $("#callBtn").href = "tel:" + SETTINGS.phone.replace(/\s/g, "");
-  if ($("#emailBtn")) $("#emailBtn").href = "mailto:" + SETTINGS.email;
-  if ($("#instaBtn")) $("#instaBtn").href = SETTINGS.instagramUrl;
-  if ($("#waBtn")) $("#waBtn").href = `https://wa.me/${SETTINGS.whatsapp}`;
+
+  // WhatsApp buttons (inline and floating)
+  if ($("#waBtn")) $("#waBtn").href = waHref;
+  if ($("#floatingWaBtn")) $("#floatingWaBtn").href = waHref;
+
+  // Legacy button IDs fallback
+  if ($("#callBtn")) $("#callBtn").href = telHref;
+  if ($("#emailBtn")) $("#emailBtn").href = mailHref;
+  if ($("#instaBtn")) $("#instaBtn").href = instaHref;
 }
 
 // ---------- PRODUCTS ----------
