@@ -636,6 +636,11 @@ async function updateOrderStatus(orderDocId, newStatus) {
 
       if (oldStatus === newStatus) return;
 
+      // Disallow reactivation or modification of orders cancelled by the customer
+      if (oldStatus === "Cancelled" && (orderData.cancelledBy === "customer" || orderData.cancellationSource === "customer")) {
+        throw new Error("This order was cancelled by the customer and cannot be modified.");
+      }
+
       if (newStatus === "Cancelled" && oldStatus !== "Cancelled") {
         if (Array.isArray(orderData.products)) {
           for (const item of orderData.products) {
@@ -701,7 +706,23 @@ function renderOrdersTable() {
   const filterStatus = $("#orderStatusFilter")?.value || "All";
 
   const filteredOrders = ORDERS.filter(o => {
-    if (filterStatus !== "All" && o.status !== filterStatus) return false;
+    const isCancelled = o.status === "Cancelled";
+    const isCustCancelled = isCancelled && (
+      o.cancelledBy === "customer" || 
+      o.cancellationSource === "customer" || 
+      (Array.isArray(o.statusHistory) && o.statusHistory.some(h => h.status === "Cancelled" && h.source === "customer"))
+    );
+
+    if (filterStatus === "Cancelled by Customer") {
+      if (!isCustCancelled) return false;
+    } else if (filterStatus !== "All") {
+      if (filterStatus === "Cancelled") {
+        if (!isCancelled) return false;
+      } else if (o.status !== filterStatus) {
+        return false;
+      }
+    }
+
     if (searchVal) {
       const matchId = (o.orderId || o.id || "").toLowerCase().includes(searchVal);
       const matchCust = (o.customerName || "").toLowerCase().includes(searchVal);
@@ -711,25 +732,51 @@ function renderOrdersTable() {
     return true;
   });
 
-  $("#ordersTbody").innerHTML = filteredOrders.map(o => `
-    <tr>
-      <td><strong>${o.orderId || o.id}</strong></td>
-      <td>${o.customerName || "—"}</td>
-      <td>${o.mobile || "—"}</td>
-      <td>₹${(o.total || 0).toLocaleString("en-IN")}</td>
-      <td>${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString() : "—"}</td>
-      <td>
-        <span class="pill ${o.paymentMethod === "UPI" ? "yes" : "no"}" style="font-size:.7rem; display:inline-block; margin-bottom:2px;">${o.paymentMethod || "COD"}</span>
-        <div style="font-size:.68rem; opacity:.75; max-width:110px; line-height:1.2;">${o.paymentStatus || (o.paymentMethod === "UPI" ? "Pending Verification" : "Pay on Delivery")}</div>
-      </td>
-      <td>
-        <select class="status-select" data-id="${o.id}">
-          ${STATUSES.map(s => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}
-        </select>
-      </td>
-      <td><span class="icon-action view-order" data-id="${o.id}" title="View Order"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></td>
-    </tr>
-  `).join("") || `<tr><td colspan="8" style="text-align:center;opacity:.6;padding:30px">No orders matching criteria.</td></tr>`;
+  $("#ordersTbody").innerHTML = filteredOrders.map(o => {
+    const isCancelled = o.status === "Cancelled";
+    const isCustomerCancelled = isCancelled && (
+      o.cancelledBy === "customer" || 
+      o.cancellationSource === "customer" || 
+      (Array.isArray(o.statusHistory) && o.statusHistory.some(h => h.status === "Cancelled" && h.source === "customer"))
+    );
+
+    const rowClass = isCustomerCancelled ? "order-row-cancelled" : (isCancelled ? "order-row-cancelled" : "");
+    const mainTextClass = (isCustomerCancelled || isCancelled) ? "order-main-text" : "";
+
+    const cancelHistoryItem = Array.isArray(o.statusHistory)
+      ? o.statusHistory.slice().reverse().find(h => h.status === "Cancelled")
+      : null;
+    const cancelDateStr = cancelHistoryItem?.timestamp ? new Date(cancelHistoryItem.timestamp).toLocaleDateString() : "";
+
+    return `
+      <tr class="${rowClass}">
+        <td><strong class="${mainTextClass}">${escapeHtml(o.orderId || o.id)}</strong></td>
+        <td><span class="${mainTextClass}">${escapeHtml(o.customerName || "—")}</span></td>
+        <td><span class="${mainTextClass}">${escapeHtml(o.mobile || "—")}</span></td>
+        <td><span class="${mainTextClass}">₹${(o.total || 0).toLocaleString("en-IN")}</span></td>
+        <td>${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString() : "—"}</td>
+        <td>
+          <span class="pill ${o.paymentMethod === "UPI" ? "yes" : "no"}" style="font-size:.7rem; display:inline-block; margin-bottom:2px;">${o.paymentMethod || "COD"}</span>
+          <div style="font-size:.68rem; opacity:.75; max-width:110px; line-height:1.2;">${o.paymentStatus || (o.paymentMethod === "UPI" ? "Pending Verification" : "Pay on Delivery")}</div>
+        </td>
+        <td>
+          ${isCustomerCancelled ? `
+            <span class="badge-cancelled-customer" title="Cancelled by customer${cancelDateStr ? ' on ' + cancelDateStr : ''}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+              Cancelled by Customer
+            </span>
+          ` : (isCancelled ? `
+            <span class="pill no" style="font-size:.72rem;">Cancelled</span>
+          ` : `
+            <select class="status-select" data-id="${o.id}">
+              ${STATUSES.map(s => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}
+            </select>
+          `)}
+        </td>
+        <td><span class="icon-action view-order" data-id="${o.id}" title="View Order Details"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></td>
+      </tr>
+    `;
+  }).join("") || `<tr><td colspan="8" style="text-align:center;opacity:.6;padding:30px">No orders matching criteria.</td></tr>`;
 
   document.querySelectorAll(".status-select").forEach(sel => {
     sel.addEventListener("change", async () => {
@@ -748,17 +795,49 @@ function openOrderModal(id) {
   const addr = o.address || {};
   const history = o.statusHistory || [];
 
+  const isCancelled = o.status === "Cancelled";
+  const isCustomerCancelled = isCancelled && (
+    o.cancelledBy === "customer" || 
+    o.cancellationSource === "customer" || 
+    (Array.isArray(o.statusHistory) && o.statusHistory.some(h => h.status === "Cancelled" && h.source === "customer"))
+  );
+
+  const cancelHistory = Array.isArray(o.statusHistory) 
+    ? o.statusHistory.slice().reverse().find(h => h.status === "Cancelled")
+    : null;
+  const cancelTimeStr = cancelHistory?.timestamp 
+    ? new Date(cancelHistory.timestamp).toLocaleString() 
+    : (o.updatedAt?.toDate ? o.updatedAt.toDate().toLocaleString() : "");
+
   $("#orderModalBody").innerHTML = `
-    <h3>Order ${o.orderId || o.id}</h3>
+    ${isCustomerCancelled ? `
+      <div class="modal-cancelled-banner">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        <div>
+          <strong>Order Cancelled by Customer</strong>
+          <div class="subtext">This order was cancelled by the customer via Order Tracking${cancelTimeStr ? ' on ' + cancelTimeStr : ''}. All order-management actions are disabled. Stock was safely restored.</div>
+        </div>
+      </div>
+    ` : (isCancelled ? `
+      <div class="modal-cancelled-banner" style="background:#fef2f2; border-color:#fca5a5;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        <div>
+          <strong>Order Cancelled</strong>
+          <div class="subtext">Status: Cancelled${cancelTimeStr ? ' on ' + cancelTimeStr : ''}. All order-management actions are disabled.</div>
+        </div>
+      </div>
+    ` : "")}
+
+    <h3 style="${isCustomerCancelled ? 'text-decoration:line-through; color:#7f1d1d;' : ''}">Order ${o.orderId || o.id}</h3>
     <p style="margin-bottom:14px;opacity:.7;font-size:.85rem">${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString() : ""}</p>
-    <div class="form-group"><label>Customer</label><p><strong>${o.customerName}</strong> · ${o.mobile}${o.whatsapp ? " · WA: " + o.whatsapp : ""}${o.email ? " · " + o.email : ""}</p></div>
+    <div class="form-group"><label>Customer</label><p><strong style="${isCustomerCancelled ? 'text-decoration:line-through;' : ''}">${o.customerName}</strong> · ${o.mobile}${o.whatsapp ? " · WA: " + o.whatsapp : ""}${o.email ? " · " + o.email : ""}</p></div>
     <div class="form-group"><label>Delivery Address</label><p>${addr.house || ""}, ${addr.street || ""}, ${addr.area || ""}, ${addr.city || ""}, ${addr.district || ""}, ${addr.state || ""} - ${addr.pincode || ""}</p></div>
     <div class="form-group"><label>Products</label>
-      ${(o.products || []).map(p => `<div class="custom-field-row" style="justify-content:space-between"><span>${p.name} ${p.color ? "(" + p.color + ")" : ""} × ${p.qty}</span><span>₹${(p.price * p.qty).toLocaleString("en-IN")}</span></div>`).join("")}
+      ${(o.products || []).map(p => `<div class="custom-field-row ${isCustomerCancelled ? 'cancelled-order-item' : ''}" style="justify-content:space-between"><span>${p.name} ${p.color ? "(" + p.color + ")" : ""} × ${p.qty}</span><span>₹${((p.price || 0) * (p.qty || 1)).toLocaleString("en-IN")}</span></div>`).join("")}
     </div>
     <div class="form-group"><label>Subtotal</label><p>₹${(o.subtotal || o.total || 0).toLocaleString("en-IN")}</p></div>
     <div class="form-group"><label>Delivery Charge</label><p>₹${o.deliveryCharge || 0}</p></div>
-    <div class="form-group"><label>Final Total</label><p style="font-weight:600;color:var(--rose-deep);font-size:1.1rem;">₹${(o.total || 0).toLocaleString("en-IN")}</p></div>
+    <div class="form-group"><label>Final Total</label><p style="font-weight:600;color:var(--rose-deep);font-size:1.1rem; ${isCustomerCancelled ? 'text-decoration:line-through;' : ''}">₹${(o.total || 0).toLocaleString("en-IN")}</p></div>
     ${o.notes ? `<div class="form-group"><label>Customer Notes</label><p>${o.notes}</p></div>` : ""}
 
     <div class="form-group" style="background:var(--cream); padding:12px; border-radius:10px; border:1px solid var(--beige); margin-top:12px;">
@@ -771,21 +850,22 @@ function openOrderModal(id) {
 
 
       <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-        <select id="adminUpdatePaymentStatusSelect" style="padding:6px 10px; font-size:.8rem; border-radius:8px; border:1px solid var(--beige);">
+        <select id="adminUpdatePaymentStatusSelect" ${isCancelled ? 'disabled style="opacity:0.55; cursor:not-allowed; padding:6px 10px; font-size:.8rem; border-radius:8px; border:1px solid var(--beige);"' : 'style="padding:6px 10px; font-size:.8rem; border-radius:8px; border:1px solid var(--beige);"'}>
           <option value="Payment Pending Verification" ${o.paymentStatus === "Payment Pending Verification" ? "selected" : ""}>Payment Pending Verification</option>
           <option value="Payment Verified / Paid" ${o.paymentStatus === "Payment Verified / Paid" ? "selected" : ""}>Payment Verified / Paid</option>
           <option value="Payment Failed / Rejected" ${o.paymentStatus === "Payment Failed / Rejected" ? "selected" : ""}>Payment Failed / Rejected</option>
           <option value="Pending (Cash on Delivery)" ${o.paymentStatus === "Pending (Cash on Delivery)" ? "selected" : ""}>Pending (Cash on Delivery)</option>
           <option value="Cash Collected (Delivered)" ${o.paymentStatus === "Cash Collected (Delivered)" ? "selected" : ""}>Cash Collected (Delivered)</option>
         </select>
-        <button class="btn sm" id="btnAdminSavePaymentStatus" style="font-size:.75rem;">Update Payment Status</button>
+        <button class="btn sm" id="btnAdminSavePaymentStatus" ${isCancelled ? 'disabled style="opacity:0.5; cursor:not-allowed; font-size:.75rem;"' : 'style="font-size:.75rem;"'}>Update Payment Status</button>
       </div>
+      ${isCancelled ? `<div style="font-size:.74rem; color:#991b1b; margin-top:6px; font-weight:500;">Order is cancelled. Payment status updates are disabled.</div>` : ""}
     </div>
 
     ${history.length > 0 ? `
       <div class="form-group"><label>Status History</label>
         <ul style="font-size:.82rem; padding-left:20px; line-height:1.6; opacity:.85; max-height:100px; overflow-y:auto;">
-          ${history.map(h => `<li><strong>${h.status}</strong> — ${h.timestamp ? new Date(h.timestamp).toLocaleString() : ""}</li>`).join("")}
+          ${history.map(h => `<li><strong>${h.status}</strong> — ${h.timestamp ? new Date(h.timestamp).toLocaleString() : ""} ${h.source ? "(" + h.source + ")" : ""}</li>`).join("")}
         </ul>
       </div>
     ` : ""}
@@ -793,18 +873,17 @@ function openOrderModal(id) {
       <label style="font-weight:600; color:var(--rose-deep);">Messages to Customer</label>
       <div id="adminSellerMessagesList" style="max-height:140px; overflow-y:auto; font-size:.82rem; margin-bottom:10px; display:flex; flex-direction:column; gap:6px;"></div>
       <div style="display:flex; gap:8px;">
-        <input id="adminSellerMsgInput" placeholder="Type a custom message for customer..." style="flex:1; padding:8px 12px; border:1px solid var(--beige); border-radius:8px; font-size:.82rem;">
-        <button class="btn sm" id="sendSellerMsgBtn">Send Message</button>
+        <input id="adminSellerMsgInput" ${isCancelled ? 'disabled placeholder="Order is cancelled. Customer messaging disabled."' : 'placeholder="Type a custom message for customer..."'} style="flex:1; padding:8px 12px; border:1px solid var(--beige); border-radius:8px; font-size:.82rem; ${isCancelled ? 'opacity:0.6; cursor:not-allowed;' : ''}">
+        <button class="btn sm" id="sendSellerMsgBtn" ${isCancelled ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>Send Message</button>
       </div>
+      ${isCancelled ? `<div style="font-size:.74rem; color:#991b1b; margin-top:4px;">Order is cancelled. New messages cannot be sent.</div>` : ""}
     </div>
     <div class="form-actions"><button class="btn outline" id="closeOrderModal">Close</button></div>
   `;
   $("#orderModalOverlay").classList.add("open");
   $("#closeOrderModal").addEventListener("click", () => $("#orderModalOverlay").classList.remove("open"));
 
-
-
-  if ($("#btnAdminSavePaymentStatus")) {
+  if ($("#btnAdminSavePaymentStatus") && !isCancelled) {
     $("#btnAdminSavePaymentStatus").addEventListener("click", async () => {
       const newPayStatus = $("#adminUpdatePaymentStatusSelect")?.value;
       if (!newPayStatus) return;
@@ -944,6 +1023,10 @@ function openOrderModal(id) {
   }
 
   const sendNewMessage = async () => {
+    if (isCancelled) {
+      alert("Cannot send messages for a cancelled order.");
+      return;
+    }
     const input = $("#adminSellerMsgInput");
     const sendBtn = $("#sendSellerMsgBtn");
     const text = input ? input.value.trim() : "";
@@ -964,10 +1047,10 @@ function openOrderModal(id) {
     }
   };
 
-  if ($("#sendSellerMsgBtn")) {
+  if ($("#sendSellerMsgBtn") && !isCancelled) {
     $("#sendSellerMsgBtn").addEventListener("click", sendNewMessage);
   }
-  if ($("#adminSellerMsgInput")) {
+  if ($("#adminSellerMsgInput") && !isCancelled) {
     $("#adminSellerMsgInput").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
