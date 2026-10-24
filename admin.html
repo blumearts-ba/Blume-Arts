@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Blume Arts | Admin Portal</title>
-<link rel="stylesheet" href="css/admin.css?v=3.0">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/admin.css?v=3.1">
 </head>
 <body>
 
@@ -23,8 +26,8 @@
     <div class="form-group" style="margin-bottom:18px; text-align:left;">
       <label style="font-size:.8rem; font-weight:600; opacity:.85; display:block; margin-bottom:6px;">Enter Admin PIN</label>
       <div class="pin-input-wrap" style="position:relative;">
-        <input type="password" id="adminPinInput" placeholder="Enter PIN" maxlength="8" style="padding-right:45px; letter-spacing:3px; font-size:1.1rem; font-weight:600;">
-        <button type="button" id="togglePinVisibilityBtn" aria-label="Toggle PIN Visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; padding:6px; cursor:pointer; opacity:.7;">
+        <input type="password" id="adminPinInput" placeholder="Enter PIN" maxlength="8" autocomplete="current-password" style="padding-right:45px; letter-spacing:3px; font-size:1.1rem; font-weight:600;">
+        <button type="button" id="togglePinVisibilityBtn" aria-label="Show PIN" title="Toggle PIN visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; padding:6px; cursor:pointer; opacity:.7; display:flex; align-items:center; justify-content:center;">
           <svg id="eyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
             <circle cx="12" cy="12" r="3"></circle>
